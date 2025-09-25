@@ -1548,22 +1548,35 @@ const ProfilePage = () => {
     }
   }, [user, profileUserId]);
 
-  const fetchUserData = async () => {
-    if (!user) return;
+  const fetchOtherUserProfile = async (userId) => {
     try {
+      const response = await axios.get(`${API}/auth/me?user_id=${userId}`);
+      setProfileUser(response.data);
+    } catch (error) {
+      console.error('Error fetching other user profile:', error);
+    }
+  };
+
+  const fetchUserData = async (targetUserId, isOwn) => {
+    if (!targetUserId) return;
+    try {
+      const viewerId = user ? user.id : null;
       const [ratingsRes, favoritesRes] = await Promise.all([
-        axios.get(`${API}/users/${user.id}/ratings`),
-        axios.get(`${API}/users/${user.id}/film-lists/favorites?viewer_id=${user.id}`)
+        axios.get(`${API}/users/${targetUserId}/ratings`),
+        isOwn ? axios.get(`${API}/users/${targetUserId}/film-lists/favorites?viewer_id=${viewerId}`) : Promise.resolve({data: []})
       ]);
       
       setUserRatings(ratingsRes.data);
-      setFavoriteFilms(favoritesRes.data.slice(0, 5));
       
-      // Get top 5 highest rated films by this user
-      const topRated = ratingsRes.data
-        .sort((a, b) => b.rating - a.rating || new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, 5);
-      setTopRatedFilms(topRated);
+      if (isOwn) {
+        setFavoriteFilms(favoritesRes.data.slice(0, 5));
+        
+        // Get top 5 highest rated films by this user (only for own profile)
+        const topRated = ratingsRes.data
+          .sort((a, b) => b.rating - a.rating || new Date(b.created_at) - new Date(a.created_at))
+          .slice(0, 5);
+        setTopRatedFilms(topRated);
+      }
       
     } catch (error) {
       console.error('Error fetching user data:', error);
