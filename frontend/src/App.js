@@ -1083,7 +1083,7 @@ function App() {
             <Route path="/films" element={<FilmsPage />} />
             <Route path="/films/:id" element={<FilmDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/ai-recommendations" element={<AIRecommendationsPage />} />
+            <Route path="/encontrar" element={<EncontrarPage />} />
           </Routes>
         </div>
       </Router>
