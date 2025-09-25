@@ -586,12 +586,19 @@ Responda APENAS com uma lista numerada de recomendações (máximo 5) seguida de
 # Include the router in the main app
 app.include_router(api_router)
 
+# Security middleware
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["*"]  # In production, specify exact domains
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
+    max_age=600,  # Cache preflight for 10 minutes
 )
 
 # Configure logging
