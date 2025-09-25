@@ -182,6 +182,35 @@ class ContentFilter:
 # Rate limiting simples
 rate_limit_store = defaultdict(list)
 
+def check_rate_limit(client_ip: str, max_requests: int = 10, window_seconds: int = 60) -> bool:
+    """Verifica rate limiting por IP"""
+    now = time.time()
+    # Remove requisições antigas
+    rate_limit_store[client_ip] = [
+        timestamp for timestamp in rate_limit_store[client_ip]
+        if now - timestamp < window_seconds
+    ]
+    
+    # Verifica se excedeu o limite
+    if len(rate_limit_store[client_ip]) >= max_requests:
+        return False
+    
+    # Registra a nova requisição
+    rate_limit_store[client_ip].append(now)
+    return True
+
+async def check_user_banned(user_id: str) -> bool:
+    """Verifica se o usuário está banido"""
+    now = datetime.now(timezone.utc)
+    ban = await db.user_bans.find_one({
+        "user_id": user_id,
+        "$or": [
+            {"expires_at": None},  # Ban permanente
+            {"expires_at": {"$gt": now}}  # Ban ainda ativo
+        ]
+    })
+    return ban is not None
+
 # Auth endpoints
 @api_router.post("/auth/login")
 async def login_user(email: str):
