@@ -1836,8 +1836,10 @@ const ProfilePage = () => {
             )}
           </CardContent>
         </Card>
+        )}
 
-        {/* Film Lists */}
+        {/* Film Lists - Only for own profile */}
+        {isOwnProfile && (
         <Card>
           <CardHeader>
             <CardTitle className="text-green-800">Minhas Listas</CardTitle>
