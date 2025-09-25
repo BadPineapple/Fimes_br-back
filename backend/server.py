@@ -110,6 +110,7 @@ class Film(BaseModel):
     tags: List[str] = Field(default_factory=list)
     year: Optional[int] = Field(None, ge=1890, le=2030)
     director: Optional[str] = Field(None, max_length=200)
+    actors: List[str] = Field(default_factory=list, description="Lista de atores principais")
     imdb_rating: Optional[float] = Field(None, ge=0, le=10)
     letterboxd_rating: Optional[float] = Field(None, ge=0, le=5)
     watch_links: List[Dict[str, str]] = Field(default_factory=list)
