@@ -1511,6 +1511,9 @@ const ApoiePage = () => {
 // User Profile Page
 const ProfilePage = () => {
   const { user } = React.useContext(AuthContext);
+  const { id: profileUserId } = useParams(); // Para acessar perfil de outros usuários
+  const [profileUser, setProfileUser] = useState(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [userRatings, setUserRatings] = useState([]);
   const [favoriteFilms, setFavoriteFilms] = useState([]);
   const [topRatedFilms, setTopRatedFilms] = useState([]);
