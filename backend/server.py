@@ -81,6 +81,20 @@ class UserRatingCreate(BaseModel):
     film_id: str
     rating: float
     comment: Optional[str] = None
+    
+    @validator('rating')
+    def validate_rating(cls, v):
+        if not 1 <= v <= 5:
+            raise ValueError('Nota deve estar entre 1 e 5')
+        return v
+    
+    @validator('comment')
+    def validate_comment(cls, v):
+        if v:
+            is_safe, reason = ContentFilter.is_content_safe(v)
+            if not is_safe:
+                raise ValueError(f'Comentário rejeitado: {reason}')
+        return v
 
 class AIRecommendationRequest(BaseModel):
     description: str
