@@ -1429,6 +1429,7 @@ function App() {
             <Route path="/films/:id" element={<FilmDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/encontrar" element={<EncontrarPage />} />
+            <Route path="/apoie" element={<ApoiePage />} />
           </Routes>
         </div>
       </Router>
