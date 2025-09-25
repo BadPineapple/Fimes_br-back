@@ -668,6 +668,18 @@ async def get_film_ratings(film_id: str):
     
     return result
 
+@api_router.get("/films/{film_id}/average-rating")
+async def get_film_average_rating(film_id: str):
+    """Obter média de avaliações de um filme"""
+    pipeline = [
+        {"$match": {"film_id": film_id}},
+        {"$group": {"_id": None, "average": {"$avg": "$rating"}, "count": {"$sum": 1}}}
+    ]
+    result = await db.ratings.aggregate(pipeline).to_list(1)
+    if result:
+        return {"average": round(result[0]["average"], 1), "count": result[0]["count"]}
+    return {"average": 0, "count": 0}
+
 @api_router.get("/users/{user_id}/ratings")
 async def get_user_ratings(user_id: str):
     """Obter todas as avaliações de um usuário"""
