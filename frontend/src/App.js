@@ -562,6 +562,131 @@ const EncontrarPage = () => {
   );
 };
 
+// Apoie Page
+const ApoiePage = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-yellow-50 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-green-800 mb-4">
+            Apoie o Cinema Brasileiro
+          </h1>
+          <p className="text-xl text-green-700 mb-6">
+            Juntos, fortalecemos nossa indústria cinematográfica nacional
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 mb-12">
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="text-green-800 flex items-center gap-2">
+                <Film className="text-yellow-600" />
+                Nossa Missão
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                O <strong>Filmes.br</strong> é uma plataforma dedicada a promover e valorizar o cinema brasileiro. 
+                Nossa missão é criar uma comunidade onde cinéfilos possam descobrir, avaliar e discutir 
+                as obras nacionais que fazem parte da nossa rica cultura cinematográfica.
+              </p>
+              <p className="text-gray-700">
+                Desde os clássicos do Cinema Novo até as produções contemporâneas, acreditamos que 
+                cada filme brasileiro merece ser visto, discutido e preservado para as futuras gerações.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="text-green-800 flex items-center gap-2">
+                <Star className="text-yellow-600" />
+                Por que Apoiar?
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-3">
+                <li className="flex items-start gap-2">
+                  <span className="text-green-600 mt-1">✓</span>
+                  <span className="text-gray-700">Manter a plataforma gratuita e acessível para todos</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-600 mt-1">✓</span>
+                  <span className="text-gray-700">Expandir nosso banco de dados com mais filmes nacionais</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-600 mt-1">✓</span>
+                  <span className="text-gray-700">Desenvolver novas funcionalidades para a comunidade</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-600 mt-1">✓</span>
+                  <span className="text-gray-700">Promover eventos e iniciativas culturais</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Banner Apoia-se */}
+        <Card className="bg-gradient-to-r from-green-600 to-yellow-600 text-white mb-8">
+          <CardContent className="p-8 text-center">
+            <h2 className="text-3xl font-bold mb-4">
+              Faça Parte Dessa História
+            </h2>
+            <p className="text-lg mb-6 opacity-90">
+              Sua contribuição nos ajuda a manter viva a memória do cinema brasileiro 
+              e a descobrir novos talentos da nossa cinematografia.
+            </p>
+            <Button 
+              size="lg" 
+              className="bg-white text-green-700 hover:bg-gray-100 font-bold px-8"
+              asChild
+            >
+              <a 
+                href="https://apoia.se/filmesbr" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                data-testid="support-button"
+              >
+                <Star className="mr-2" size={20} />
+                Apoiar no Apoia.se
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-green-800 text-center">
+              A Importância do Cinema Nacional
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="prose prose-green max-w-none">
+            <p className="text-gray-700 leading-relaxed mb-4">
+              O cinema brasileiro é um espelho da nossa sociedade, retratando nossas histórias, 
+              culturas regionais e diversidade social. Desde "Limite" de Mário Peixoto (1931) 
+              até as produções contemporâneas de diretores como Kleber Mendonça Filho e Anna Muylaert, 
+              nosso cinema evoluiu e ganhou reconhecimento internacional.
+            </p>
+            
+            <p className="text-gray-700 leading-relaxed mb-4">
+              Filmes como <em>"Central do Brasil"</em>, <em>"Cidade de Deus"</em>, e <em>"O Auto da Compadecida"</em> 
+              não são apenas entretenimento - são patrimônio cultural que preserva nossa identidade 
+              e nos conecta com nossas raízes.
+            </p>
+            
+            <p className="text-gray-700 leading-relaxed">
+              Ao apoiar o <strong>Filmes.br</strong>, você está investindo na preservação e promoção 
+              deste patrimônio cultural inestimável, garantindo que as futuras gerações tenham 
+              acesso às obras que definem quem somos como povo e como nação.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 // User Profile Page
 const ProfilePage = () => {
   const { user } = React.useContext(AuthContext);
