@@ -730,6 +730,124 @@ async def resolve_report(report_id: str, action: str, moderator_id: str):
     
     return {"message": f"Denúncia resolvida com ação: {action}"}
 
+# Moderator Dashboard endpoints
+@api_router.get("/moderation/dashboard")
+async def get_moderator_dashboard(moderator_id: str):
+    """Get dashboard data for moderators"""
+    moderator = await db.users.find_one({"id": moderator_id})
+    if not moderator or moderator.get("role") != "moderator":
+        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
+    
+    # Contar denúncias pendentes
+    pending_reports = await db.comment_reports.count_documents({"status": "pending"})
+    
+    # Contar perfis novos (últimos 30 dias)
+    thirty_days_ago = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day - 30)
+    new_profiles = await db.users.count_documents({
+        "created_at": {"$gte": thirty_days_ago}
+    })
+    
+    # Top 5 filmes melhor avaliados
+    top_rated_pipeline = [
+        {"$match": {"ratings_count": {"$gte": 1}}},
+        {"$sort": {"average_rating": -1}},
+        {"$limit": 5},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id",
+            "foreignField": "id",
+            "as": "film"
+        }}
+    ]
+    top_rated = await db.film_metrics.aggregate(top_rated_pipeline).to_list(5)
+    
+    # Top 5 filmes mais favoritados
+    top_favorites_pipeline = [
+        {"$sort": {"favorites_count": -1}},
+        {"$limit": 5},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id", 
+            "foreignField": "id",
+            "as": "film"
+        }}
+    ]
+    top_favorites = await db.film_metrics.aggregate(top_favorites_pipeline).to_list(5)
+    
+    # Top 5 filmes mais assistidos
+    top_watched_pipeline = [
+        {"$sort": {"watched_count": -1}},
+        {"$limit": 5},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id",
+            "foreignField": "id", 
+            "as": "film"
+        }}
+    ]
+    top_watched = await db.film_metrics.aggregate(top_watched_pipeline).to_list(5)
+    
+    return {
+        "pending_reports": pending_reports,
+        "new_profiles": new_profiles,
+        "top_rated_films": [
+            {
+                "film": result.get("film", [{}])[0] if result.get("film") else {},
+                "metrics": {
+                    "average_rating": result["average_rating"],
+                    "ratings_count": result["ratings_count"]
+                }
+            } for result in top_rated
+        ],
+        "top_favorite_films": [
+            {
+                "film": result.get("film", [{}])[0] if result.get("film") else {},
+                "metrics": {
+                    "favorites_count": result["favorites_count"]
+                }
+            } for result in top_favorites
+        ],
+        "top_watched_films": [
+            {
+                "film": result.get("film", [{}])[0] if result.get("film") else {},
+                "metrics": {
+                    "watched_count": result["watched_count"]
+                }
+            } for result in top_watched
+        ]
+    }
+
+@api_router.post("/moderation/mark-supporter")
+async def mark_user_as_supporter(user_id: str, action: ModeratorAction, moderator_id: str):
+    """Mark user as supporter (moderator only)"""
+    moderator = await db.users.find_one({"id": moderator_id})
+    if not moderator or moderator.get("role") != "moderator":
+        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
+    
+    # Password verification is handled by Pydantic validator
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_supporter": True}}
+    )
+    
+    return {"message": "Usuário marcado como apoiador com sucesso"}
+
+@api_router.get("/moderation/new-profiles")
+async def get_new_profiles(moderator_id: str, days: int = 7):
+    """Get recently created profiles (moderator only)"""
+    moderator = await db.users.find_one({"id": moderator_id})
+    if not moderator or moderator.get("role") != "moderator":
+        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
+    
+    days_ago = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day - days)
+    new_users = await db.users.find({
+        "created_at": {"$gte": days_ago},
+        "role": "user"
+    }).sort("created_at", -1).to_list(100)
+    
+    return [User(**user) for user in new_users]
+
 # AI Recommendation endpoint
 @api_router.post("/ai/recommend", response_model=AIRecommendationResponse)
 async def get_ai_recommendations(request: AIRecommendationRequest):
