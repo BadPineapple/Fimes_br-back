@@ -71,7 +71,6 @@ const Navigation = () => {
     { to: "/films", icon: Film, label: "Filmes" },
     { to: "/encontrar", icon: Search, label: "Encontrar" },
     { to: "/apoie", icon: Star, label: "Apoie" },
-    ...(user ? [{ to: "/profile", icon: User, label: "Perfil" }] : []),
     ...(user && user.role === 'moderator' ? [{ to: "/moderator", icon: MessageSquare, label: "Dashboard", special: true }] : [])
   ];
 
