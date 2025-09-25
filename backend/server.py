@@ -38,6 +38,8 @@ class User(BaseModel):
     avatar_url: Optional[str] = None
     role: str = "user"  # user, moderator
     friends: List[str] = []
+    is_private: bool = False
+    is_supporter: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserCreate(BaseModel):
