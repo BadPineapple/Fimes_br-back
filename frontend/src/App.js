@@ -691,13 +691,25 @@ const ApoiePage = () => {
 const ProfilePage = () => {
   const { user } = React.useContext(AuthContext);
   const [userRatings, setUserRatings] = useState([]);
+  const [favoriteFilms, setFavoriteFilms] = useState([]);
+  const [topRatedFilms, setTopRatedFilms] = useState([]);
+  const [selectedList, setSelectedList] = useState('favorites');
+  const [listFilms, setListFilms] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: '', description: '' });
+  const [editData, setEditData] = useState({ 
+    name: '', 
+    description: '', 
+    is_private: false 
+  });
 
   useEffect(() => {
     if (user) {
-      setEditData({ name: user.name, description: user.description || '' });
-      fetchUserRatings();
+      setEditData({ 
+        name: user.name, 
+        description: user.description || '',
+        is_private: user.is_private || false
+      });
+      fetchUserData();
     }
   }, [user]);
 
