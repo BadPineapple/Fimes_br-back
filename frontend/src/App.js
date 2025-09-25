@@ -251,11 +251,21 @@ const LoginDialog = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    // Verify captcha
+    if (parseInt(captcha) !== captchaAnswer) {
+      alert('Verificação incorreta. Tente novamente.');
+      generateCaptcha();
+      setCaptcha('');
+      return;
+    }
+    
     setLoading(true);
     try {
       await login(email);
       setOpen(false);
       setEmail('');
+      setCaptcha('');
     } catch (error) {
       console.error('Login failed:', error);
     }
