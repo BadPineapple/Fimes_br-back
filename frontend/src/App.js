@@ -2369,6 +2369,220 @@ const FilmDetailPage = () => {
   );
 };
 
+// Contact Us Dialog Component
+const ContactUsDialog = () => {
+  const [open, setOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    subject: '',
+    message: ''
+  });
+  const [captcha, setCaptcha] = useState('');
+  const [captchaAnswer, setCaptchaAnswer] = useState(0);
+  const [captchaQuestion, setCaptchaQuestion] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Generate captcha
+  const generateCaptcha = () => {
+    const num1 = Math.floor(Math.random() * 15) + 1;
+    const num2 = Math.floor(Math.random() * 15) + 1;
+    const operations = ['+', '-', '×'];
+    const operation = operations[Math.floor(Math.random() * operations.length)];
+    
+    let answer;
+    let question;
+    
+    switch(operation) {
+      case '+':
+        answer = num1 + num2;
+        question = `${num1} + ${num2}`;
+        break;
+      case '-':
+        const [larger, smaller] = [Math.max(num1, num2), Math.min(num1, num2)];
+        answer = larger - smaller;
+        question = `${larger} - ${smaller}`;
+        break;
+      case '×':
+        answer = num1 * num2;
+        question = `${num1} × ${num2}`;
+        break;
+      default:
+        answer = num1 + num2;
+        question = `${num1} + ${num2}`;
+    }
+    
+    setCaptchaQuestion(question);
+    setCaptchaAnswer(answer);
+  };
+
+  useEffect(() => {
+    if (open) {
+      generateCaptcha();
+    }
+  }, [open]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Verify captcha
+    if (parseInt(captcha) !== captchaAnswer) {
+      alert('Verificação matemática incorreta. Tente novamente.');
+      generateCaptcha();
+      setCaptcha('');
+      return;
+    }
+
+    setLoading(true);
+    
+    // Simulate email sending (in real implementation, would call backend)
+    setTimeout(() => {
+      alert('Mensagem enviada com sucesso! Entraremos em contato em breve.');
+      setFormData({ name: '', email: '', subject: '', message: '' });
+      setCaptcha('');
+      setOpen(false);
+      setLoading(false);
+    }, 1000);
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="text-gray-600 hover:text-green-600 text-sm"
+      >
+        Fale Conosco
+      </button>
+      
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-green-800">Fale Conosco - Filmes.br</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              placeholder="Seu nome"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              required
+            />
+            <Input
+              type="email"
+              placeholder="Seu email"
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              required
+            />
+            <Input
+              placeholder="Assunto"
+              value={formData.subject}
+              onChange={(e) => setFormData({...formData, subject: e.target.value})}
+              required
+            />
+            <Textarea
+              placeholder="Sua mensagem..."
+              value={formData.message}
+              onChange={(e) => setFormData({...formData, message: e.target.value})}
+              rows={4}
+              required
+            />
+            
+            {/* Captcha */}
+            <div className="bg-gray-50 p-4 rounded-md">
+              <label className="block text-sm font-medium mb-2">
+                🤖 Verificação: Não sou um robô
+              </label>
+              <div className="flex items-center space-x-3">
+                <span className="text-lg font-mono bg-white px-3 py-2 border rounded">
+                  {captchaQuestion} = ?
+                </span>
+                <Input
+                  type="number"
+                  placeholder="Resultado"
+                  value={captcha}
+                  onChange={(e) => setCaptcha(e.target.value)}
+                  className="w-20"
+                  required
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={generateCaptcha}
+                  title="Nova pergunta"
+                >
+                  🔄
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex space-x-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading} className="flex-1 bg-green-600 hover:bg-green-700">
+                {loading ? 'Enviando...' : 'Enviar'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
+// Footer Component
+const Footer = () => {
+  return (
+    <footer className="bg-gradient-to-r from-green-800 via-yellow-600 to-blue-800 text-white py-8 mt-16">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* About */}
+          <div>
+            <h3 className="text-xl font-bold mb-4">Filmes.br</h3>
+            <p className="text-sm opacity-90 leading-relaxed">
+              A maior plataforma de cinema brasileiro. Descubra, avalie e compartilhe 
+              sua paixão pelo cinema nacional com uma comunidade que ama nossa cultura cinematográfica.
+            </p>
+          </div>
+          
+          {/* Quick Links */}
+          <div>
+            <h4 className="text-lg font-semibold mb-4">Links Rápidos</h4>
+            <div className="space-y-2 text-sm">
+              <div><Link to="/films" className="hover:text-yellow-200">Todos os Filmes</Link></div>
+              <div><Link to="/encontrar" className="hover:text-yellow-200">IA Recomenda</Link></div>
+              <div><Link to="/apoie" className="hover:text-yellow-200">Apoie o Projeto</Link></div>
+              <div><a href="https://apoia.se/filmesbr" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-200">Apoia.se</a></div>
+            </div>
+          </div>
+          
+          {/* Contact */}
+          <div>
+            <h4 className="text-lg font-semibold mb-4">Contato & Suporte</h4>
+            <div className="space-y-2 text-sm">
+              <div className="mb-3">
+                <ContactUsDialog />
+              </div>
+              <div>Email: contato@filmes.br</div>
+              <div>Suporte: ajuda@filmes.br</div>
+              <div className="pt-2">
+                <p className="text-xs opacity-75">
+                  Plataforma dedicada ao cinema brasileiro • Feito com ❤️ para nossa cultura
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="border-t border-white border-opacity-20 mt-8 pt-6 text-center text-sm opacity-75">
+          <p>&copy; 2025 Filmes.br - Todos os direitos reservados • Cinema Nacional Brasileiro</p>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
 // Main App Component
 function App() {
   return (
