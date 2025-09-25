@@ -985,6 +985,7 @@ logger = logging.getLogger(__name__)
 async def startup_event():
     """Inicialização da aplicação"""
     await initialize_moderator()
+    await initialize_sample_films()
     logger.info("Filmes.br API inicializada com sucesso")
 
 @app.on_event("shutdown")
