@@ -177,7 +177,7 @@ class CommentReport(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     comment_id: str
     reporter_user_id: str
-    reason: str = Field(..., regex="^(spam|inappropriate|harassment|off_topic|other)$")
+    reason: str = Field(..., pattern="^(spam|inappropriate|harassment|off_topic|other)$")
     description: Optional[str] = Field(None, max_length=500)
     status: str = Field(default="pending", regex="^(pending|reviewed|dismissed)$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
