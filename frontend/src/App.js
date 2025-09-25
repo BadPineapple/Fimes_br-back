@@ -1527,15 +1527,26 @@ const ProfilePage = () => {
   });
 
   useEffect(() => {
-    if (user) {
-      setEditData({ 
-        name: user.name, 
-        description: user.description || '',
-        is_private: user.is_private || false
-      });
-      fetchUserData();
+    const targetUserId = profileUserId || (user ? user.id : null);
+    const isOwn = user && (!profileUserId || profileUserId === user.id);
+    
+    setIsOwnProfile(isOwn);
+    
+    if (targetUserId) {
+      if (isOwn) {
+        setProfileUser(user);
+        setEditData({ 
+          name: user.name, 
+          description: user.description || '',
+          is_private: user.is_private || false
+        });
+      } else {
+        // Fetch other user's profile
+        fetchOtherUserProfile(targetUserId);
+      }
+      fetchUserData(targetUserId, isOwn);
     }
-  }, [user]);
+  }, [user, profileUserId]);
 
   const fetchUserData = async () => {
     if (!user) return;
