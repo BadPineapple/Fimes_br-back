@@ -275,6 +275,24 @@ async def get_featured_films():
     films = await db.films.find().limit(12).to_list(12)
     return [Film(**film) for film in films]
 
+@api_router.get("/films/genres")
+async def get_available_genres():
+    """Get all available genres/tags"""
+    pipeline = [
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    
+    genres = await db.films.aggregate(pipeline).to_list(100)
+    return [{"genre": genre["_id"], "count": genre["count"]} for genre in genres]
+
+@api_router.get("/films/by-genre/{genre}")
+async def get_films_by_genre(genre: str):
+    """Get films filtered by genre"""
+    films = await db.films.find({"tags": {"$regex": genre, "$options": "i"}}).to_list(1000)
+    return [Film(**film) for film in films]
+
 @api_router.get("/films/{film_id}", response_model=Film)
 async def get_film(film_id: str):
     """Get specific film"""
