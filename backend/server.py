@@ -848,7 +848,7 @@ async def get_new_profiles(moderator_id: str, days: int = 7):
     if not moderator or moderator.get("role") != "moderator":
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
     
-    days_ago = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day - days)
+    days_ago = datetime.now(timezone.utc) - timedelta(days=days)
     new_users = await db.users.find({
         "created_at": {"$gte": days_ago},
         "role": "user"
