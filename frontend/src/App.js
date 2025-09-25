@@ -1787,8 +1787,10 @@ const ProfilePage = () => {
             )}
           </CardContent>
         </Card>
+        )}
 
-        {/* Top Rated Films */}
+        {/* Top Rated Films - Only for own profile */}
+        {isOwnProfile && (
         <Card>
           <CardHeader>
             <CardTitle className="text-green-800">Minhas Melhores Avaliações</CardTitle>
