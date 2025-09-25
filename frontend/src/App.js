@@ -834,10 +834,30 @@ const ProfilePage = () => {
                       placeholder="Descrição do perfil..."
                       rows={2}
                     />
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="is_private"
+                        checked={editData.is_private}
+                        onChange={(e) => setEditData({...editData, is_private: e.target.checked})}
+                        className="rounded border-gray-300"
+                      />
+                      <label htmlFor="is_private" className="text-sm">
+                        Perfil privado (apenas amigos podem ver)
+                      </label>
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <CardTitle className="text-2xl text-green-800">{user.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-2xl text-green-800">{user.name}</CardTitle>
+                      {user.is_supporter && (
+                        <Star className="text-yellow-500 fill-yellow-500" size={24} title="Apoiador" />
+                      )}
+                      {user.is_private && (
+                        <span className="text-xs bg-gray-200 px-2 py-1 rounded">Privado</span>
+                      )}
+                    </div>
                     <CardDescription className="text-base mt-2">
                       {user.description || 'Amante do cinema brasileiro'}
                     </CardDescription>
