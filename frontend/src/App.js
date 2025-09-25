@@ -896,6 +896,15 @@ const AddFilmForm = ({ user, onSuccess }) => {
               </div>
 
               <div>
+                <label className="block text-sm font-medium mb-2">Atores Principais</label>
+                <Input
+                  value={formData.actors}
+                  onChange={(e) => setFormData({ ...formData, actors: e.target.value })}
+                  placeholder="Wagner Moura, Alexandre Rodrigues, Sônia Braga (separar por vírgula)"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium mb-2">Tags/Gêneros</label>
                 <Input
                   value={formData.tags}
