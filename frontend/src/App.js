@@ -921,6 +921,11 @@ const ModeratorDashboard = () => {
               </Card>
             </div>
           </TabsContent>
+
+          {/* Adicionar Filme */}
+          <TabsContent value="add-film">
+            <AddFilmForm user={user} onSuccess={() => alert('Filme adicionado com sucesso!')} />
+          </TabsContent>
         </Tabs>
 
         {/* Dialog de Confirmação */}
