@@ -289,22 +289,54 @@ const FilmCard = ({ film }) => {
 // Films Page Component
 const FilmsPage = () => {
   const [films, setFilms] = useState([]);
+  const [genres, setGenres] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedGenre, setSelectedGenre] = useState('');
 
   useEffect(() => {
-    const fetchFilms = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`${API}/films`);
-        setFilms(response.data);
+        const [filmsRes, genresRes] = await Promise.all([
+          axios.get(`${API}/films`),
+          axios.get(`${API}/films/genres`)
+        ]);
+        setFilms(filmsRes.data);
+        setGenres(genresRes.data);
       } catch (error) {
-        console.error('Error fetching films:', error);
+        console.error('Error fetching data:', error);
       }
       setLoading(false);
     };
 
-    fetchFilms();
+    fetchData();
   }, []);
+
+  const fetchByGenre = async (genre) => {
+    if (!genre) {
+      // Fetch all films
+      try {
+        const response = await axios.get(`${API}/films`);
+        setFilms(response.data);
+      } catch (error) {
+        console.error('Error fetching all films:', error);
+      }
+    } else {
+      // Fetch films by genre
+      try {
+        const response = await axios.get(`${API}/films/by-genre/${genre}`);
+        setFilms(response.data);
+      } catch (error) {
+        console.error('Error fetching films by genre:', error);
+      }
+    }
+  };
+
+  const handleGenreChange = (genre) => {
+    setSelectedGenre(genre);
+    setSearchTerm(''); // Clear search when changing genre
+    fetchByGenre(genre);
+  };
 
   const filteredFilms = films.filter(film =>
     film.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
