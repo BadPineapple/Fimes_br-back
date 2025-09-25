@@ -357,19 +357,52 @@ const FilmsPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-yellow-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-green-800 mb-4">
+          <h1 className="text-3xl font-bold text-green-800 mb-6">
             Filmografia Brasileira
           </h1>
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Buscar filmes..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              data-testid="search-input"
-            />
+          
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar filmes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+                data-testid="search-input"
+              />
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <label className="text-sm font-medium text-green-800">Filtrar por gênero:</label>
+              <select
+                value={selectedGenre}
+                onChange={(e) => handleGenreChange(e.target.value)}
+                className="px-4 py-2 border border-green-300 rounded-md bg-white text-green-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="">Todos os gêneros</option>
+                {genres.map((genre, index) => (
+                  <option key={index} value={genre.genre}>
+                    {genre.genre} ({genre.count})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+          
+          {selectedGenre && (
+            <div className="mb-4">
+              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
+                Filtrando por: {selectedGenre}
+                <button 
+                  onClick={() => handleGenreChange('')}
+                  className="ml-2 text-green-600 hover:text-green-800"
+                >
+                  ✕
+                </button>
+              </Badge>
+            </div>
+          )}
         </div>
 
         {filteredFilms.length > 0 ? (
