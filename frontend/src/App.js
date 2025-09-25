@@ -1727,9 +1727,11 @@ const ProfilePage = () => {
                     </Button>
                   </>
                 ) : (
-                  <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                    Editar Perfil
-                  </Button>
+                  isOwnProfile && (
+                    <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                      Editar Perfil
+                    </Button>
+                  )
                 )}
               </div>
             </div>
