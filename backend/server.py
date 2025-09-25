@@ -180,7 +180,7 @@ async def delete_film(film_id: str):
     return {"message": "Film deleted successfully"}
 
 # Rating endpoints
-@api_router.post("/films/{film_id}/ratings", response_model=UserRating)
+@api_router.post("/films/{film_id}/ratings")
 async def create_rating(film_id: str, rating_data: UserRatingCreate, user_id: str):
     """Create or update user rating for a film"""
     rating = UserRating(user_id=user_id, **rating_data.dict())
@@ -190,13 +190,34 @@ async def create_rating(film_id: str, rating_data: UserRatingCreate, user_id: st
     
     # Insert new rating
     await db.ratings.insert_one(rating.dict())
-    return rating
+    return rating.dict()
 
-@api_router.get("/films/{film_id}/ratings", response_model=List[UserRating])
+@api_router.get("/films/{film_id}/ratings")
 async def get_film_ratings(film_id: str):
-    """Get all ratings for a film"""
-    ratings = await db.ratings.find({"film_id": film_id}).to_list(1000)
-    return [UserRating(**rating) for rating in ratings]
+    """Get all ratings for a film with user info"""
+    pipeline = [
+        {"$match": {"film_id": film_id}},
+        {"$lookup": {
+            "from": "users",
+            "localField": "user_id", 
+            "foreignField": "id",
+            "as": "user"
+        }},
+        {"$sort": {"created_at": -1}}
+    ]
+    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
+    
+    result = []
+    for rating in ratings:
+        rating_obj = UserRating(**rating)
+        user_info = rating.get("user", [{}])[0] if rating.get("user") else {}
+        result.append({
+            **rating_obj.dict(),
+            "user_name": user_info.get("name", "Usuário"),
+            "user_avatar": user_info.get("avatar_url")
+        })
+    
+    return result
 
 @api_router.get("/films/{film_id}/average-rating")
 async def get_film_average_rating(film_id: str):
@@ -209,6 +230,33 @@ async def get_film_average_rating(film_id: str):
     if result:
         return {"average": round(result[0]["average"], 1), "count": result[0]["count"]}
     return {"average": 0, "count": 0}
+
+@api_router.get("/users/{user_id}/ratings")
+async def get_user_ratings(user_id: str):
+    """Get all ratings by a specific user"""
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id",
+            "foreignField": "id", 
+            "as": "film"
+        }},
+        {"$sort": {"created_at": -1}}
+    ]
+    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
+    
+    result = []
+    for rating in ratings:
+        film_info = rating.get("film", [{}])[0] if rating.get("film") else {}
+        result.append({
+            **UserRating(**rating).dict(),
+            "film_title": film_info.get("title", "Filme não encontrado"),
+            "film_year": film_info.get("year"),
+            "film_banner": film_info.get("banner_url")
+        })
+    
+    return result
 
 # AI Recommendation endpoint
 @api_router.post("/ai/recommend", response_model=AIRecommendationResponse)
