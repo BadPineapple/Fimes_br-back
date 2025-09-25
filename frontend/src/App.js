@@ -2588,18 +2588,21 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-white flex flex-col">
           <Navigation />
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/films" element={<FilmsPage />} />
-            <Route path="/films/:id" element={<FilmDetailPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/profile/:id" element={<ProfilePage />} />
-            <Route path="/encontrar" element={<EncontrarPage />} />
-            <Route path="/apoie" element={<ApoiePage />} />
-            <Route path="/moderator" element={<ModeratorDashboard />} />
-          </Routes>
+          <main className="flex-1">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/films" element={<FilmsPage />} />
+              <Route path="/films/:id" element={<FilmDetailPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/profile/:id" element={<ProfilePage />} />
+              <Route path="/encontrar" element={<EncontrarPage />} />
+              <Route path="/apoie" element={<ApoiePage />} />
+              <Route path="/moderator" element={<ModeratorDashboard />} />
+            </Routes>
+          </main>
+          <Footer />
         </div>
       </Router>
     </AuthProvider>
