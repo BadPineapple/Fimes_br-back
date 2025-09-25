@@ -76,15 +76,15 @@ const Navigation = () => {
             <div className="hidden md:flex space-x-6">
               <Link to="/" className="text-white hover:text-yellow-200 flex items-center gap-2">
                 <Home size={18} />
-                Início
+                Home
               </Link>
               <Link to="/films" className="text-white hover:text-yellow-200 flex items-center gap-2">
                 <Film size={18} />
-                Todos os Filmes
+                Filmes
               </Link>
-              <Link to="/ai-recommendations" className="text-white hover:text-yellow-200 flex items-center gap-2">
-                <Sparkles size={18} />
-                IA Recomenda
+              <Link to="/encontrar" className="text-white hover:text-yellow-200 flex items-center gap-2">
+                <Search size={18} />
+                Encontrar
               </Link>
               {user && (
                 <Link to="/profile" className="text-white hover:text-yellow-200 flex items-center gap-2">
