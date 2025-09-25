@@ -1738,7 +1738,8 @@ const ProfilePage = () => {
           </CardHeader>
         </Card>
 
-        {/* Favorite Films */}
+        {/* Favorite Films - Only for own profile */}
+        {isOwnProfile && (
         <Card>
           <CardHeader>
             <CardTitle className="text-green-800">Filmes Favoritos</CardTitle>
