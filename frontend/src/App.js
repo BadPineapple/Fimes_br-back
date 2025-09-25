@@ -86,6 +86,12 @@ const Navigation = () => {
                 <Sparkles size={18} />
                 IA Recomenda
               </Link>
+              {user && (
+                <Link to="/profile" className="text-white hover:text-yellow-200 flex items-center gap-2">
+                  <User size={18} />
+                  Perfil
+                </Link>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-4">
