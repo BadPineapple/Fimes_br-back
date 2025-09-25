@@ -784,6 +784,7 @@ const AddFilmForm = ({ user, onSuccess }) => {
         description: '',
         year: '',
         director: '',
+        actors: '',
         imdb_rating: '',
         letterboxd_rating: '',
         tags: '',
