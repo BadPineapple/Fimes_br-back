@@ -114,11 +114,16 @@ const Navigation = () => {
               <div className="hidden md:flex items-center space-x-4">
                 {user ? (
                   <>
-                    <span className="text-white">Olá, {user.name}</span>
-                    <Avatar>
-                      <AvatarImage src={user.avatar_url} />
-                      <AvatarFallback>{user.name[0]}</AvatarFallback>
-                    </Avatar>
+                    <Link 
+                      to="/profile" 
+                      className="text-white hover:text-yellow-200 flex items-center space-x-2 cursor-pointer"
+                    >
+                      <span>Olá, {user.name}</span>
+                      <Avatar>
+                        <AvatarImage src={user.avatar_url} />
+                        <AvatarFallback>{user.name[0]}</AvatarFallback>
+                      </Avatar>
+                    </Link>
                     <Button variant="outline" onClick={logout}>
                       Sair
                     </Button>
