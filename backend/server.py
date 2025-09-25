@@ -749,7 +749,8 @@ async def get_moderator_dashboard(moderator_id: str):
     pending_reports = await db.comment_reports.count_documents({"status": "pending"})
     
     # Contar perfis novos (últimos 30 dias)
-    thirty_days_ago = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day - 30)
+    from datetime import timedelta
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     new_profiles = await db.users.count_documents({
         "created_at": {"$gte": thirty_days_ago}
     })
