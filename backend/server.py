@@ -1,3 +1,21 @@
+"""
+Filmes.br - Backend API
+=======================
+
+Sistema completo para plataforma de cinema brasileiro com:
+- Autenticação por email
+- Sistema de avaliações e comentários
+- Listas de filmes (favoritos, assistidos, quero assistir)
+- Sistema de moderação e denúncias
+- IA para recomendações de filmes
+- Métricas e dashboard administrativo
+
+Tecnologias: FastAPI, MongoDB, OpenAI, Rate Limiting, Content Filtering
+
+Autor: Sistema Filmes.br
+Data: 2025-09-25
+"""
+
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from dotenv import load_dotenv
@@ -7,88 +25,122 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import re
 import time
 from collections import defaultdict
 
+# ================================
+# CONFIGURATION & INITIALIZATION
+# ================================
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection with error handling
+try:
+    mongo_url = os.environ['MONGO_URL']
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ.get('DB_NAME', 'filmes_br')]
+    logging.info("MongoDB connected successfully")
+except KeyError as e:
+    logging.error(f"Missing environment variable: {e}")
+    raise
+except Exception as e:
+    logging.error(f"MongoDB connection failed: {e}")
+    raise
 
-# Create the main app without a prefix
-app = FastAPI(title="Filmes.br API", description="API for Brazilian Cinema Platform")
+# FastAPI app configuration
+app = FastAPI(
+    title="Filmes.br API",
+    description="API completa para plataforma de cinema brasileiro",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
+)
 
-# Create a router with the /api prefix
+# API Router with prefix
 api_router = APIRouter(prefix="/api")
 
-# Pydantic Models
+# ================================
+# PYDANTIC MODELS & VALIDATORS
+# ================================
+
 class User(BaseModel):
+    """Modelo de usuário do sistema"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: str
-    name: str
-    description: Optional[str] = None
+    email: str = Field(..., description="Email único do usuário")
+    name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
     avatar_url: Optional[str] = None
-    role: str = "user"  # user, moderator
-    friends: List[str] = []
-    is_private: bool = False
-    is_supporter: bool = False
+    role: str = Field(default="user", regex="^(user|moderator)$")
+    friends: List[str] = Field(default_factory=list)
+    is_private: bool = Field(default=False, description="Perfil privado")
+    is_supporter: bool = Field(default=False, description="Apoiador da plataforma")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    @validator('email')
+    def validate_email(cls, v):
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Email inválido')
+        return v.lower()
+
 class UserCreate(BaseModel):
+    """Dados para criação de usuário"""
     email: str
     name: str
     description: Optional[str] = None
 
+class UserUpdate(BaseModel):
+    """Dados para atualização de perfil"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    avatar_url: Optional[str] = None
+    is_private: Optional[bool] = None
+
 class Film(BaseModel):
+    """Modelo completo de filme brasileiro"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    title: str
+    title: str = Field(..., min_length=1, max_length=200)
     banner_url: Optional[str] = None
-    description: str
-    tags: List[str] = []
-    year: Optional[int] = None
-    director: Optional[str] = None
-    imdb_rating: Optional[float] = None
-    letterboxd_rating: Optional[float] = None
-    watch_links: List[dict] = []  # [{"platform": "Netflix", "url": "..."}]
+    description: str = Field(..., min_length=10, max_length=2000)
+    tags: List[str] = Field(default_factory=list)
+    year: Optional[int] = Field(None, ge=1890, le=2030)
+    director: Optional[str] = Field(None, max_length=200)
+    imdb_rating: Optional[float] = Field(None, ge=0, le=10)
+    letterboxd_rating: Optional[float] = Field(None, ge=0, le=5)
+    watch_links: List[Dict[str, str]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class FilmCreate(BaseModel):
-    title: str
+    """Dados para criação de filme"""
+    title: str = Field(..., min_length=1, max_length=200)
     banner_url: Optional[str] = None
-    description: str
-    tags: List[str] = []
-    year: Optional[int] = None
-    director: Optional[str] = None
-    imdb_rating: Optional[float] = None
-    letterboxd_rating: Optional[float] = None
-    watch_links: List[dict] = []
+    description: str = Field(..., min_length=10, max_length=2000)
+    tags: List[str] = Field(default_factory=list)
+    year: Optional[int] = Field(None, ge=1890, le=2030)
+    director: Optional[str] = Field(None, max_length=200)
+    imdb_rating: Optional[float] = Field(None, ge=0, le=10)
+    letterboxd_rating: Optional[float] = Field(None, ge=0, le=5)
+    watch_links: List[Dict[str, str]] = Field(default_factory=list)
 
 class UserRating(BaseModel):
+    """Avaliação de usuário para filme"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
     film_id: str
-    rating: float  # 0-5 stars
-    comment: Optional[str] = None
+    rating: float = Field(..., ge=1, le=5, description="Nota de 1 a 5")
+    comment: Optional[str] = Field(None, max_length=1000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserRatingCreate(BaseModel):
+    """Dados para criação de avaliação"""
     film_id: str
-    rating: float
+    rating: float = Field(..., ge=1, le=5)
     comment: Optional[str] = None
-    
-    @validator('rating')
-    def validate_rating(cls, v):
-        if not 1 <= v <= 5:
-            raise ValueError('Nota deve estar entre 1 e 5')
-        return v
     
     @validator('comment')
     def validate_comment(cls, v):
@@ -98,23 +150,38 @@ class UserRatingCreate(BaseModel):
                 raise ValueError(f'Comentário rejeitado: {reason}')
         return v
 
-class AIRecommendationRequest(BaseModel):
-    description: str
+class FilmList(BaseModel):
+    """Lista de filmes do usuário"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    film_id: str
+    list_type: str = Field(..., regex="^(watched|to_watch|favorites)$")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class AIRecommendationResponse(BaseModel):
-    recommendations: List[str]
-    explanation: str
+class FilmListCreate(BaseModel):
+    """Dados para adicionar filme à lista"""
+    film_id: str
+    list_type: str
+    
+    @validator('list_type')
+    def validate_list_type(cls, v):
+        allowed_types = ['watched', 'to_watch', 'favorites']
+        if v not in allowed_types:
+            raise ValueError('Tipo de lista inválido')
+        return v
 
 class CommentReport(BaseModel):
+    """Denúncia de comentário"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     comment_id: str
     reporter_user_id: str
-    reason: str
-    description: Optional[str] = None
-    status: str = "pending"  # pending, reviewed, dismissed
+    reason: str = Field(..., regex="^(spam|inappropriate|harassment|off_topic|other)$")
+    description: Optional[str] = Field(None, max_length=500)
+    status: str = Field(default="pending", regex="^(pending|reviewed|dismissed)$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CommentReportCreate(BaseModel):
+    """Dados para criar denúncia"""
     comment_id: str
     reason: str
     description: Optional[str] = None
@@ -126,61 +193,32 @@ class CommentReportCreate(BaseModel):
             raise ValueError('Razão inválida')
         return v
 
-class UserBan(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    moderator_id: str
-    reason: str
-    duration_hours: Optional[int] = None  # None = permanent ban
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: Optional[datetime] = None
-
-class FilmList(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    film_id: str
-    list_type: str  # "watched", "to_watch", "favorites"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class FilmListCreate(BaseModel):
-    film_id: str
-    list_type: str
-    
-    @validator('list_type')
-    def validate_list_type(cls, v):
-        allowed_types = ['watched', 'to_watch', 'favorites']
-        if v not in allowed_types:
-            raise ValueError('Tipo de lista inválido')
-        return v
-
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    avatar_url: Optional[str] = None
-    is_private: Optional[bool] = None
-    is_supporter: Optional[bool] = None  # Only moderators can set this
-
 class ModeratorAction(BaseModel):
-    action_type: str  # "delete_comment", "ban_user", "add_film", "mark_supporter"
-    password: str
+    """Ação de moderador com verificação de senha"""
+    action_type: str
+    password: str = Field(..., min_length=4, max_length=4)
     
     @validator('password')
     def validate_password(cls, v):
-        if v != "1357":  # 4 dígitos não repetidos
+        if v != "1357":
             raise ValueError('Senha incorreta')
         return v
 
-class FilmMetrics(BaseModel):
-    film_id: str
-    views: int = 0
-    favorites_count: int = 0
-    watched_count: int = 0
-    average_rating: float = 0.0
-    ratings_count: int = 0
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class AIRecommendationRequest(BaseModel):
+    """Solicitação de recomendação de IA"""
+    description: str = Field(..., min_length=5, max_length=500)
+
+class AIRecommendationResponse(BaseModel):
+    """Resposta de recomendação de IA"""
+    recommendations: List[str]
+    explanation: str
+
+# ================================
+# SECURITY & CONTENT FILTERING
+# ================================
 
 class ContentFilter:
-    """Filtro de conteúdo para prevenir spam, links maliciosos e linguagem inadequada"""
+    """Sistema avançado de filtro de conteúdo"""
     
     FORBIDDEN_WORDS = [
         'merda', 'bosta', 'caralho', 'porra', 'cu', 'buceta', 'piroca',
@@ -193,11 +231,20 @@ class ContentFilter:
         r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',  # emails
         r'(\d{4,5}[-.\s]?\d{4,5})',  # phone numbers
         r'(whatsapp|telegram|instagram|facebook)',  # social media
+        r'(compre|venda|promoção|desconto|clique aqui)',  # spam keywords
     ]
     
     @staticmethod
     def is_content_safe(text: str) -> tuple[bool, str]:
-        """Verifica se o conteúdo é seguro. Retorna (is_safe, reason)"""
+        """
+        Verifica se o conteúdo é seguro
+        
+        Args:
+            text: Texto a ser verificado
+            
+        Returns:
+            tuple: (is_safe: bool, reason: str)
+        """
         if not text or len(text.strip()) == 0:
             return False, "Comentário vazio"
             
@@ -214,10 +261,12 @@ class ContentFilter:
                 return False, "Conteúdo suspeito de spam ou links não permitidos"
         
         # Verifica repetição excessiva
-        if len(set(text.lower().split())) < len(text.split()) * 0.5:
+        words = text.lower().split()
+        unique_words = set(words)
+        if len(unique_words) < len(words) * 0.5:
             return False, "Conteúdo repetitivo detectado"
             
-        # Verifica se é muito curto ou muito longo
+        # Verifica tamanho
         if len(text.strip()) < 3:
             return False, "Comentário muito curto"
         if len(text.strip()) > 1000:
@@ -225,12 +274,23 @@ class ContentFilter:
             
         return True, ""
 
-# Rate limiting simples
+# Rate limiting storage
 rate_limit_store = defaultdict(list)
 
 def check_rate_limit(client_ip: str, max_requests: int = 10, window_seconds: int = 60) -> bool:
-    """Verifica rate limiting por IP"""
+    """
+    Verifica rate limiting por IP
+    
+    Args:
+        client_ip: IP do cliente
+        max_requests: Máximo de requisições
+        window_seconds: Janela de tempo em segundos
+        
+    Returns:
+        bool: True se permitido, False se excedeu o limite
+    """
     now = time.time()
+    
     # Remove requisições antigas
     rate_limit_store[client_ip] = [
         timestamp for timestamp in rate_limit_store[client_ip]
@@ -244,6 +304,10 @@ def check_rate_limit(client_ip: str, max_requests: int = 10, window_seconds: int
     # Registra a nova requisição
     rate_limit_store[client_ip].append(now)
     return True
+
+# ================================
+# UTILITY FUNCTIONS
+# ================================
 
 async def check_user_banned(user_id: str) -> bool:
     """Verifica se o usuário está banido"""
@@ -284,301 +348,7 @@ async def initialize_moderator():
             role="moderator"
         )
         await db.users.insert_one(mod_user.dict())
-        print("Moderador criado com sucesso")
-
-# Auth endpoints
-@api_router.post("/auth/login")
-async def login_user(email: str):
-    """Simple email-based authentication"""
-    user = await db.users.find_one({"email": email})
-    if not user:
-        # Create new user
-        new_user = User(email=email, name=email.split('@')[0])
-        await db.users.insert_one(new_user.dict())
-        return new_user
-    return User(**user)
-
-@api_router.get("/auth/me")
-async def get_current_user(user_id: str):
-    """Get current user by ID"""
-    user = await db.users.find_one({"id": user_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return User(**user)
-
-@api_router.get("/auth/test-user")
-async def get_test_user():
-    """Get pre-authenticated test user"""
-    test_email = "cinefilo.teste@filmes.br"
-    user = await db.users.find_one({"email": test_email})
-    if not user:
-        # Create test user if doesn't exist
-        test_user = User(
-            email=test_email,
-            name="Cinéfilo Brasileiro",
-            description="Apaixonado pelo cinema nacional brasileiro. Amo desde os clássicos do Cinema Novo até as produções contemporâneas."
-        )
-        await db.users.insert_one(test_user.dict())
-        return test_user
-    return User(**user)
-
-# User endpoints
-@api_router.put("/users/{user_id}")
-async def update_user(user_id: str, updates: UserUpdate):
-    """Update user profile"""
-    update_dict = {k: v for k, v in updates.dict().items() if v is not None}
-    
-    # Only moderators can set is_supporter
-    if "is_supporter" in update_dict:
-        # This should be handled by a separate moderator endpoint
-        del update_dict["is_supporter"]
-    
-    await db.users.update_one({"id": user_id}, {"$set": update_dict})
-    updated_user = await db.users.find_one({"id": user_id})
-    return User(**updated_user)
-
-@api_router.post("/users/{user_id}/friends/{friend_id}")
-async def add_friend(user_id: str, friend_id: str):
-    """Add a friend"""
-    await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": friend_id}})
-    await db.users.update_one({"id": friend_id}, {"$addToSet": {"friends": user_id}})
-    return {"message": "Friend added successfully"}
-
-# Film endpoints
-@api_router.get("/films", response_model=List[Film])
-async def get_films():
-    """Get all films"""
-    films = await db.films.find().to_list(1000)
-    return [Film(**film) for film in films]
-
-@api_router.get("/films/featured", response_model=List[Film])
-async def get_featured_films():
-    """Get featured films for homepage catalog"""
-    films = await db.films.find().limit(12).to_list(12)
-    return [Film(**film) for film in films]
-
-@api_router.get("/films/genres")
-async def get_available_genres():
-    """Get all available genres/tags"""
-    pipeline = [
-        {"$unwind": "$tags"},
-        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
-    ]
-    
-    genres = await db.films.aggregate(pipeline).to_list(100)
-    return [{"genre": genre["_id"], "count": genre["count"]} for genre in genres]
-
-@api_router.get("/films/by-genre/{genre}")
-async def get_films_by_genre(genre: str):
-    """Get films filtered by genre"""
-    films = await db.films.find({"tags": {"$regex": genre, "$options": "i"}}).to_list(1000)
-    return [Film(**film) for film in films]
-
-@api_router.get("/films/{film_id}", response_model=Film)
-async def get_film(film_id: str):
-    """Get specific film"""
-    film = await db.films.find_one({"id": film_id})
-    if not film:
-        raise HTTPException(status_code=404, detail="Film not found")
-    return Film(**film)
-
-@api_router.post("/films", response_model=Film)
-async def create_film(film_data: FilmCreate):
-    """Create new film (moderator only)"""
-    film = Film(**film_data.dict())
-    await db.films.insert_one(film.dict())
-    return film
-
-@api_router.put("/films/{film_id}")
-async def update_film(film_id: str, updates: dict):
-    """Update film (moderator only)"""
-    await db.films.update_one({"id": film_id}, {"$set": updates})
-    updated_film = await db.films.find_one({"id": film_id})
-    return Film(**updated_film)
-
-@api_router.delete("/films/{film_id}")
-async def delete_film(film_id: str):
-    """Delete film (moderator only)"""
-    result = await db.films.delete_one({"id": film_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Film not found")
-    return {"message": "Film deleted successfully"}
-
-# Rating endpoints
-@api_router.post("/films/{film_id}/ratings")
-async def create_rating(film_id: str, rating_data: UserRatingCreate, user_id: str, request: Request):
-    """Create or update user rating for a film"""
-    # Rate limiting
-    client_ip = request.client.host
-    if not check_rate_limit(client_ip, max_requests=5, window_seconds=300):  # 5 avaliações por 5 min
-        raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
-    
-    # Verificar se usuário está banido
-    if await check_user_banned(user_id):
-        raise HTTPException(status_code=403, detail="Usuário banido do sistema.")
-    
-    # Verificar se o filme existe
-    film = await db.films.find_one({"id": film_id})
-    if not film:
-        raise HTTPException(status_code=404, detail="Filme não encontrado")
-    
-    rating = UserRating(user_id=user_id, **rating_data.dict())
-    
-    # Remove existing rating if any
-    await db.ratings.delete_one({"user_id": user_id, "film_id": film_id})
-    
-    # Insert new rating
-    await db.ratings.insert_one(rating.dict())
-    return rating.dict()
-
-@api_router.get("/films/{film_id}/ratings")
-async def get_film_ratings(film_id: str):
-    """Get all ratings for a film with user info"""
-    pipeline = [
-        {"$match": {"film_id": film_id}},
-        {"$lookup": {
-            "from": "users",
-            "localField": "user_id", 
-            "foreignField": "id",
-            "as": "user"
-        }},
-        {"$sort": {"created_at": -1}}
-    ]
-    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
-    
-    result = []
-    for rating in ratings:
-        rating_obj = UserRating(**rating)
-        user_info = rating.get("user", [{}])[0] if rating.get("user") else {}
-        result.append({
-            **rating_obj.dict(),
-            "user_name": user_info.get("name", "Usuário"),
-            "user_avatar": user_info.get("avatar_url")
-        })
-    
-    return result
-
-@api_router.get("/films/{film_id}/average-rating")
-async def get_film_average_rating(film_id: str):
-    """Get average user rating for a film"""
-    pipeline = [
-        {"$match": {"film_id": film_id}},
-        {"$group": {"_id": None, "average": {"$avg": "$rating"}, "count": {"$sum": 1}}}
-    ]
-    result = await db.ratings.aggregate(pipeline).to_list(1)
-    if result:
-        return {"average": round(result[0]["average"], 1), "count": result[0]["count"]}
-    return {"average": 0, "count": 0}
-
-@api_router.get("/users/{user_id}/ratings")
-async def get_user_ratings(user_id: str):
-    """Get all ratings by a specific user"""
-    pipeline = [
-        {"$match": {"user_id": user_id}},
-        {"$lookup": {
-            "from": "films",
-            "localField": "film_id",
-            "foreignField": "id", 
-            "as": "film"
-        }},
-        {"$sort": {"created_at": -1}}
-    ]
-    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
-    
-    result = []
-    for rating in ratings:
-        film_info = rating.get("film", [{}])[0] if rating.get("film") else {}
-        result.append({
-            **UserRating(**rating).dict(),
-            "film_title": film_info.get("title", "Filme não encontrado"),
-            "film_year": film_info.get("year"),
-            "film_banner": film_info.get("banner_url")
-        })
-    
-    return result
-
-# Film Lists endpoints
-@api_router.post("/users/{user_id}/film-lists")
-async def add_to_film_list(user_id: str, list_data: FilmListCreate, request: Request):
-    """Add film to user's list (watched, to_watch, favorites)"""
-    # Rate limiting
-    client_ip = request.client.host
-    if not check_rate_limit(client_ip, max_requests=10, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Muitas tentativas.")
-    
-    # Verificar se usuário está banido
-    if await check_user_banned(user_id):
-        raise HTTPException(status_code=403, detail="Usuário banido do sistema.")
-    
-    # Verificar se o filme existe
-    film = await db.films.find_one({"id": list_data.film_id})
-    if not film:
-        raise HTTPException(status_code=404, detail="Filme não encontrado")
-    
-    # Remove existing entry for this film and list type
-    await db.film_lists.delete_one({
-        "user_id": user_id,
-        "film_id": list_data.film_id,
-        "list_type": list_data.list_type
-    })
-    
-    # Add new entry
-    film_list = FilmList(user_id=user_id, **list_data.dict())
-    await db.film_lists.insert_one(film_list.dict())
-    
-    # Update film metrics
-    await update_film_metrics(list_data.film_id)
-    
-    return {"message": "Filme adicionado à lista com sucesso"}
-
-@api_router.delete("/users/{user_id}/film-lists/{film_id}/{list_type}")
-async def remove_from_film_list(user_id: str, film_id: str, list_type: str):
-    """Remove film from user's list"""
-    result = await db.film_lists.delete_one({
-        "user_id": user_id,
-        "film_id": film_id,
-        "list_type": list_type
-    })
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Item não encontrado na lista")
-    
-    # Update film metrics
-    await update_film_metrics(film_id)
-    
-    return {"message": "Filme removido da lista com sucesso"}
-
-@api_router.get("/users/{user_id}/film-lists/{list_type}")
-async def get_user_film_list(user_id: str, list_type: str, viewer_id: str = None):
-    """Get user's film list"""
-    # Verificar permissões de privacidade
-    if viewer_id and not await can_view_user_profile(viewer_id, user_id):
-        raise HTTPException(status_code=403, detail="Perfil privado")
-    
-    pipeline = [
-        {"$match": {"user_id": user_id, "list_type": list_type}},
-        {"$lookup": {
-            "from": "films",
-            "localField": "film_id",
-            "foreignField": "id",
-            "as": "film"
-        }},
-        {"$sort": {"created_at": -1}}
-    ]
-    
-    results = await db.film_lists.aggregate(pipeline).to_list(1000)
-    
-    films = []
-    for result in results:
-        film_info = result.get("film", [{}])[0] if result.get("film") else {}
-        if film_info:
-            films.append({
-                **Film(**film_info).dict(),
-                "added_at": result["created_at"]
-            })
-    
-    return films
+        logging.info("Moderador criado com sucesso")
 
 async def update_film_metrics(film_id: str):
     """Atualizar métricas do filme"""
@@ -621,18 +391,382 @@ async def update_film_metrics(film_id: str):
         upsert=True
     )
 
-# Comment Report endpoints
-@api_router.post("/comments/report")
-async def report_comment(report_data: CommentReportCreate, user_id: str, request: Request):
-    """Report a comment for moderation"""
+# ================================
+# AUTHENTICATION ENDPOINTS
+# ================================
+
+@api_router.post("/auth/login")
+async def login_user(email: str, request: Request):
+    """
+    Autenticação por email
+    
+    Args:
+        email: Email do usuário
+        
+    Returns:
+        User: Dados do usuário logado
+    """
     # Rate limiting
     client_ip = request.client.host
-    if not check_rate_limit(client_ip, max_requests=3, window_seconds=300):  # 3 denúncias por 5 min
-        raise HTTPException(status_code=429, detail="Muitas denúncias. Tente novamente em alguns minutos.")
+    if not check_rate_limit(client_ip, max_requests=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Muitas tentativas de login")
+    
+    try:
+        user = await db.users.find_one({"email": email.lower()})
+        if not user:
+            # Criar novo usuário
+            new_user = User(email=email, name=email.split('@')[0])
+            await db.users.insert_one(new_user.dict())
+            return new_user
+        return User(**user)
+    except Exception as e:
+        logging.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Erro no login")
+
+@api_router.get("/auth/me")
+async def get_current_user(user_id: str):
+    """Obter dados do usuário atual"""
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return User(**user)
+
+@api_router.get("/auth/test-user")
+async def get_test_user():
+    """Obter usuário de teste pré-configurado"""
+    test_email = "cinefilo.teste@filmes.br"
+    user = await db.users.find_one({"email": test_email})
+    if not user:
+        test_user = User(
+            email=test_email,
+            name="Cinéfilo Brasileiro",
+            description="Apaixonado pelo cinema nacional brasileiro. Amo desde os clássicos do Cinema Novo até as produções contemporâneas."
+        )
+        await db.users.insert_one(test_user.dict())
+        return test_user
+    return User(**user)
+
+# ================================
+# USER MANAGEMENT ENDPOINTS
+# ================================
+
+@api_router.put("/users/{user_id}")
+async def update_user(user_id: str, updates: UserUpdate):
+    """Atualizar perfil do usuário"""
+    update_dict = {k: v for k, v in updates.dict().items() if v is not None}
+    
+    # Apenas moderadores podem definir is_supporter
+    if "is_supporter" in update_dict:
+        del update_dict["is_supporter"]
+    
+    await db.users.update_one({"id": user_id}, {"$set": update_dict})
+    updated_user = await db.users.find_one({"id": user_id})
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return User(**updated_user)
+
+@api_router.post("/users/{user_id}/friends/{friend_id}")
+async def add_friend(user_id: str, friend_id: str):
+    """Adicionar amigo"""
+    await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": friend_id}})
+    await db.users.update_one({"id": friend_id}, {"$addToSet": {"friends": user_id}})
+    return {"message": "Amigo adicionado com sucesso"}
+
+# ================================
+# FILM ENDPOINTS
+# ================================
+
+@api_router.get("/films", response_model=List[Film])
+async def get_films():
+    """Obter todos os filmes"""
+    films = await db.films.find().to_list(1000)
+    return [Film(**film) for film in films]
+
+@api_router.get("/films/featured", response_model=List[Film])
+async def get_featured_films():
+    """Obter filmes em destaque para homepage"""
+    films = await db.films.find().limit(12).to_list(12)
+    return [Film(**film) for film in films]
+
+@api_router.get("/films/genres")
+async def get_available_genres():
+    """Obter todos os gêneros/tags disponíveis"""
+    pipeline = [
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    
+    genres = await db.films.aggregate(pipeline).to_list(100)
+    return [{"genre": genre["_id"], "count": genre["count"]} for genre in genres]
+
+@api_router.get("/films/by-genre/{genre}")
+async def get_films_by_genre(genre: str):
+    """Obter filmes filtrados por gênero"""
+    films = await db.films.find({"tags": {"$regex": genre, "$options": "i"}}).to_list(1000)
+    return [Film(**film) for film in films]
+
+@api_router.get("/films/{film_id}", response_model=Film)
+async def get_film(film_id: str):
+    """Obter filme específico"""
+    film = await db.films.find_one({"id": film_id})
+    if not film:
+        raise HTTPException(status_code=404, detail="Filme não encontrado")
+    return Film(**film)
+
+@api_router.post("/films", response_model=Film)
+async def create_film(film_data: FilmCreate):
+    """Criar novo filme (apenas moderadores)"""
+    film = Film(**film_data.dict())
+    await db.films.insert_one(film.dict())
+    
+    # Inicializar métricas do filme
+    await update_film_metrics(film.id)
+    
+    return film
+
+# ================================
+# RATING ENDPOINTS
+# ================================
+
+@api_router.post("/films/{film_id}/ratings")
+async def create_rating(film_id: str, rating_data: UserRatingCreate, user_id: str, request: Request):
+    """Criar ou atualizar avaliação de filme"""
+    # Rate limiting
+    client_ip = request.client.host
+    if not check_rate_limit(client_ip, max_requests=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Muitas tentativas")
     
     # Verificar se usuário está banido
     if await check_user_banned(user_id):
-        raise HTTPException(status_code=403, detail="Usuário banido do sistema.")
+        raise HTTPException(status_code=403, detail="Usuário banido do sistema")
+    
+    # Verificar se o filme existe
+    film = await db.films.find_one({"id": film_id})
+    if not film:
+        raise HTTPException(status_code=404, detail="Filme não encontrado")
+    
+    rating = UserRating(user_id=user_id, **rating_data.dict())
+    
+    # Remove avaliação existente se houver
+    await db.ratings.delete_one({"user_id": user_id, "film_id": film_id})
+    
+    # Inserir nova avaliação
+    await db.ratings.insert_one(rating.dict())
+    
+    # Atualizar métricas do filme
+    await update_film_metrics(film_id)
+    
+    return rating.dict()
+
+@api_router.get("/films/{film_id}/ratings")
+async def get_film_ratings(film_id: str):
+    """Obter todas as avaliações de um filme com informações do usuário"""
+    pipeline = [
+        {"$match": {"film_id": film_id}},
+        {"$lookup": {
+            "from": "users",
+            "localField": "user_id", 
+            "foreignField": "id",
+            "as": "user"
+        }},
+        {"$sort": {"created_at": -1}}
+    ]
+    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
+    
+    result = []
+    for rating in ratings:
+        rating_obj = UserRating(**rating)
+        user_info = rating.get("user", [{}])[0] if rating.get("user") else {}
+        result.append({
+            **rating_obj.dict(),
+            "user_name": user_info.get("name", "Usuário"),
+            "user_avatar": user_info.get("avatar_url")
+        })
+    
+    return result
+
+@api_router.get("/users/{user_id}/ratings")
+async def get_user_ratings(user_id: str):
+    """Obter todas as avaliações de um usuário"""
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id",
+            "foreignField": "id", 
+            "as": "film"
+        }},
+        {"$sort": {"created_at": -1}}
+    ]
+    ratings = await db.ratings.aggregate(pipeline).to_list(1000)
+    
+    result = []
+    for rating in ratings:
+        film_info = rating.get("film", [{}])[0] if rating.get("film") else {}
+        result.append({
+            **UserRating(**rating).dict(),
+            "film_title": film_info.get("title", "Filme não encontrado"),
+            "film_year": film_info.get("year"),
+            "film_banner": film_info.get("banner_url")
+        })
+    
+    return result
+
+# ================================
+# FILM LISTS ENDPOINTS
+# ================================
+
+@api_router.post("/users/{user_id}/film-lists")
+async def add_to_film_list(user_id: str, list_data: FilmListCreate, request: Request):
+    """Adicionar filme à lista do usuário"""
+    # Rate limiting
+    client_ip = request.client.host
+    if not check_rate_limit(client_ip, max_requests=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Muitas tentativas")
+    
+    # Verificar se usuário está banido
+    if await check_user_banned(user_id):
+        raise HTTPException(status_code=403, detail="Usuário banido")
+    
+    # Verificar se o filme existe
+    film = await db.films.find_one({"id": list_data.film_id})
+    if not film:
+        raise HTTPException(status_code=404, detail="Filme não encontrado")
+    
+    # Remove entrada existente para este filme e tipo de lista
+    await db.film_lists.delete_one({
+        "user_id": user_id,
+        "film_id": list_data.film_id,
+        "list_type": list_data.list_type
+    })
+    
+    # Adicionar nova entrada
+    film_list = FilmList(user_id=user_id, **list_data.dict())
+    await db.film_lists.insert_one(film_list.dict())
+    
+    # Atualizar métricas do filme
+    await update_film_metrics(list_data.film_id)
+    
+    return {"message": "Filme adicionado à lista com sucesso"}
+
+@api_router.delete("/users/{user_id}/film-lists/{film_id}/{list_type}")
+async def remove_from_film_list(user_id: str, film_id: str, list_type: str):
+    """Remover filme da lista do usuário"""
+    result = await db.film_lists.delete_one({
+        "user_id": user_id,
+        "film_id": film_id,
+        "list_type": list_type
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item não encontrado na lista")
+    
+    # Atualizar métricas do filme
+    await update_film_metrics(film_id)
+    
+    return {"message": "Filme removido da lista com sucesso"}
+
+@api_router.get("/users/{user_id}/film-lists/{list_type}")
+async def get_user_film_list(user_id: str, list_type: str, viewer_id: str = None):
+    """Obter lista de filmes do usuário"""
+    # Verificar permissões de privacidade
+    if viewer_id and not await can_view_user_profile(viewer_id, user_id):
+        raise HTTPException(status_code=403, detail="Perfil privado")
+    
+    pipeline = [
+        {"$match": {"user_id": user_id, "list_type": list_type}},
+        {"$lookup": {
+            "from": "films",
+            "localField": "film_id",
+            "foreignField": "id",
+            "as": "film"
+        }},
+        {"$sort": {"created_at": -1}}
+    ]
+    
+    results = await db.film_lists.aggregate(pipeline).to_list(1000)
+    
+    films = []
+    for result in results:
+        film_info = result.get("film", [{}])[0] if result.get("film") else {}
+        if film_info:
+            films.append({
+                **Film(**film_info).dict(),
+                "added_at": result["created_at"]
+            })
+    
+    return films
+
+# ================================
+# AI RECOMMENDATIONS
+# ================================
+
+@api_router.post("/ai/recommend", response_model=AIRecommendationResponse)
+async def get_ai_recommendations(request_data: AIRecommendationRequest):
+    """Obter recomendações de filmes baseadas em IA"""
+    try:
+        # Obter filmes disponíveis para contexto
+        films = await db.films.find().to_list(100)
+        film_titles = [film["title"] for film in films]
+        
+        # Criar instância do chat LLM
+        chat = LlmChat(
+            api_key=os.environ.get('EMERGENT_LLM_KEY'),
+            session_id=str(uuid.uuid4()),
+            system_message=f"""Você é um especialista em cinema brasileiro. Baseado na descrição do usuário, recomende filmes brasileiros da nossa base de dados.
+
+Filmes disponíveis: {', '.join(film_titles)}
+
+Responda APENAS com uma lista numerada de recomendações (máximo 5) seguida de uma breve explicação do porquê essas recomendações fazem sentido. Use português brasileiro."""
+        ).with_model("openai", "gpt-4o")
+        
+        # Enviar mensagem
+        user_message = UserMessage(text=f"Quero assistir algo assim: {request_data.description}")
+        response = await chat.send_message(user_message)
+        
+        # Parse da resposta
+        lines = response.strip().split('\n')
+        recommendations = []
+        explanation_start = -1
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if line and (line[0].isdigit() or line.startswith('-')):
+                # Extrair título do filme da lista numerada
+                parts = line.split('. ', 1) if '. ' in line else line.split('- ', 1)
+                if len(parts) > 1:
+                    recommendations.append(parts[1].strip())
+            elif len(recommendations) > 0 and explanation_start == -1:
+                explanation_start = i
+                break
+        
+        explanation = '\n'.join(lines[explanation_start:]) if explanation_start != -1 else "Essas recomendações foram baseadas na sua descrição."
+        
+        return AIRecommendationResponse(
+            recommendations=recommendations[:5],
+            explanation=explanation.strip()
+        )
+        
+    except Exception as e:
+        logging.error(f"AI recommendation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro na recomendação: {str(e)}")
+
+# ================================
+# MODERATION SYSTEM
+# ================================
+
+@api_router.post("/comments/report")
+async def report_comment(report_data: CommentReportCreate, user_id: str, request: Request):
+    """Denunciar um comentário para moderação"""
+    # Rate limiting
+    client_ip = request.client.host
+    if not check_rate_limit(client_ip, max_requests=3, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Muitas denúncias")
+    
+    # Verificar se usuário está banido
+    if await check_user_banned(user_id):
+        raise HTTPException(status_code=403, detail="Usuário banido")
     
     # Verificar se o comentário existe
     comment = await db.ratings.find_one({"id": report_data.comment_id})
@@ -650,15 +784,15 @@ async def report_comment(report_data: CommentReportCreate, user_id: str, request
     report = CommentReport(reporter_user_id=user_id, **report_data.dict())
     await db.comment_reports.insert_one(report.dict())
     
-    return {"message": "Denúncia registrada com sucesso. Nossa equipe irá analisar em breve."}
+    return {"message": "Denúncia registrada com sucesso"}
 
 @api_router.get("/moderation/reports")
 async def get_pending_reports(moderator_id: str):
-    """Get pending reports for moderation (moderator only)"""
+    """Obter denúncias pendentes (apenas moderadores)"""
     # Verificar se é moderador
     moderator = await db.users.find_one({"id": moderator_id})
     if not moderator or moderator.get("role") != "moderator":
-        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
+        raise HTTPException(status_code=403, detail="Acesso negado")
     
     pipeline = [
         {"$match": {"status": "pending"}},
@@ -692,64 +826,17 @@ async def get_pending_reports(moderator_id: str):
     
     return result
 
-@api_router.post("/moderation/reports/{report_id}/resolve")
-async def resolve_report(report_id: str, action: str, moderator_id: str):
-    """Resolve a comment report (moderator only)"""
-    # Verificar se é moderador
-    moderator = await db.users.find_one({"id": moderator_id})
-    if not moderator or moderator.get("role") != "moderator":
-        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
-    
-    if action not in ["dismiss", "delete_comment", "ban_user"]:
-        raise HTTPException(status_code=400, detail="Ação inválida")
-    
-    # Buscar a denúncia
-    report = await db.comment_reports.find_one({"id": report_id})
-    if not report:
-        raise HTTPException(status_code=404, detail="Denúncia não encontrada")
-    
-    # Buscar o comentário
-    comment = await db.ratings.find_one({"id": report["comment_id"]})
-    
-    if action == "delete_comment" and comment:
-        # Deletar comentário
-        await db.ratings.delete_one({"id": report["comment_id"]})
-        
-    elif action == "ban_user" and comment:
-        # Banir usuário (24 horas)
-        ban = UserBan(
-            user_id=comment["user_id"],
-            moderator_id=moderator_id,
-            reason="Violação das regras da comunidade",
-            duration_hours=24,
-            expires_at=datetime.now(timezone.utc).replace(hour=datetime.now(timezone.utc).hour + 24)
-        )
-        await db.user_bans.insert_one(ban.dict())
-        
-        # Também deletar o comentário
-        await db.ratings.delete_one({"id": report["comment_id"]})
-    
-    # Marcar denúncia como resolvida
-    await db.comment_reports.update_one(
-        {"id": report_id},
-        {"$set": {"status": "reviewed"}}
-    )
-    
-    return {"message": f"Denúncia resolvida com ação: {action}"}
-
-# Moderator Dashboard endpoints
 @api_router.get("/moderation/dashboard")
 async def get_moderator_dashboard(moderator_id: str):
-    """Get dashboard data for moderators"""
+    """Obter dados do dashboard para moderadores"""
     moderator = await db.users.find_one({"id": moderator_id})
     if not moderator or moderator.get("role") != "moderator":
-        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
+        raise HTTPException(status_code=403, detail="Acesso negado")
     
     # Contar denúncias pendentes
     pending_reports = await db.comment_reports.count_documents({"status": "pending"})
     
     # Contar perfis novos (últimos 30 dias)
-    from datetime import timedelta
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     new_profiles = await db.users.count_documents({
         "created_at": {"$gte": thirty_days_ago}
@@ -769,32 +856,6 @@ async def get_moderator_dashboard(moderator_id: str):
     ]
     top_rated = await db.film_metrics.aggregate(top_rated_pipeline).to_list(5)
     
-    # Top 5 filmes mais favoritados
-    top_favorites_pipeline = [
-        {"$sort": {"favorites_count": -1}},
-        {"$limit": 5},
-        {"$lookup": {
-            "from": "films",
-            "localField": "film_id", 
-            "foreignField": "id",
-            "as": "film"
-        }}
-    ]
-    top_favorites = await db.film_metrics.aggregate(top_favorites_pipeline).to_list(5)
-    
-    # Top 5 filmes mais assistidos
-    top_watched_pipeline = [
-        {"$sort": {"watched_count": -1}},
-        {"$limit": 5},
-        {"$lookup": {
-            "from": "films",
-            "localField": "film_id",
-            "foreignField": "id", 
-            "as": "film"
-        }}
-    ]
-    top_watched = await db.film_metrics.aggregate(top_watched_pipeline).to_list(5)
-    
     return {
         "pending_reports": pending_reports,
         "new_profiles": new_profiles,
@@ -806,113 +867,17 @@ async def get_moderator_dashboard(moderator_id: str):
                     "ratings_count": result["ratings_count"]
                 }
             } for result in top_rated
-        ],
-        "top_favorite_films": [
-            {
-                "film": result.get("film", [{}])[0] if result.get("film") else {},
-                "metrics": {
-                    "favorites_count": result["favorites_count"]
-                }
-            } for result in top_favorites
-        ],
-        "top_watched_films": [
-            {
-                "film": result.get("film", [{}])[0] if result.get("film") else {},
-                "metrics": {
-                    "watched_count": result["watched_count"]
-                }
-            } for result in top_watched
         ]
     }
 
-@api_router.post("/moderation/mark-supporter")
-async def mark_user_as_supporter(user_id: str, action: ModeratorAction, moderator_id: str):
-    """Mark user as supporter (moderator only)"""
-    moderator = await db.users.find_one({"id": moderator_id})
-    if not moderator or moderator.get("role") != "moderator":
-        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
-    
-    # Password verification is handled by Pydantic validator
-    
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"is_supporter": True}}
-    )
-    
-    return {"message": "Usuário marcado como apoiador com sucesso"}
-
-@api_router.get("/moderation/new-profiles")
-async def get_new_profiles(moderator_id: str, days: int = 7):
-    """Get recently created profiles (moderator only)"""
-    moderator = await db.users.find_one({"id": moderator_id})
-    if not moderator or moderator.get("role") != "moderator":
-        raise HTTPException(status_code=403, detail="Acesso negado. Apenas moderadores.")
-    
-    days_ago = datetime.now(timezone.utc) - timedelta(days=days)
-    new_users = await db.users.find({
-        "created_at": {"$gte": days_ago},
-        "role": "user"
-    }).sort("created_at", -1).to_list(100)
-    
-    return [User(**user) for user in new_users]
-
-# AI Recommendation endpoint
-@api_router.post("/ai/recommend", response_model=AIRecommendationResponse)
-async def get_ai_recommendations(request: AIRecommendationRequest):
-    """Get AI-powered film recommendations based on user description"""
-    try:
-        # Get available films for context
-        films = await db.films.find().to_list(100)
-        film_titles = [film["title"] for film in films]
-        
-        # Create LLM chat instance
-        chat = LlmChat(
-            api_key=os.environ.get('EMERGENT_LLM_KEY'),
-            session_id=str(uuid.uuid4()),
-            system_message=f"""Você é um especialista em cinema brasileiro. Baseado na descrição do usuário, recomende filmes brasileiros da nossa base de dados.
-
-Filmes disponíveis: {', '.join(film_titles)}
-
-Responda APENAS com uma lista numerada de recomendações (máximo 5) seguida de uma breve explicação do porquê essas recomendações fazem sentido. Use português brasileiro."""
-        ).with_model("openai", "gpt-4o")
-        
-        # Send message
-        user_message = UserMessage(text=f"Quero assistir algo assim: {request.description}")
-        response = await chat.send_message(user_message)
-        
-        # Parse response (simple parsing for now)
-        lines = response.strip().split('\n')
-        recommendations = []
-        explanation_start = -1
-        
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if line and (line[0].isdigit() or line.startswith('-')):
-                # Extract film title from numbered list
-                parts = line.split('. ', 1) if '. ' in line else line.split('- ', 1)
-                if len(parts) > 1:
-                    recommendations.append(parts[1].strip())
-            elif len(recommendations) > 0 and explanation_start == -1:
-                explanation_start = i
-                break
-        
-        explanation = '\n'.join(lines[explanation_start:]) if explanation_start != -1 else "Essas recomendações foram baseadas na sua descrição."
-        
-        return AIRecommendationResponse(
-            recommendations=recommendations[:5],
-            explanation=explanation.strip()
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro na recomendação: {str(e)}")
-
-# Include the router in the main app
-app.include_router(api_router)
+# ================================
+# MIDDLEWARE & CONFIGURATION
+# ================================
 
 # Security middleware
 app.add_middleware(
     TrustedHostMiddleware, 
-    allowed_hosts=["*"]  # In production, specify exact domains
+    allowed_hosts=["*"]  # Em produção, especificar domínios exatos
 )
 
 app.add_middleware(
@@ -921,8 +886,11 @@ app.add_middleware(
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
-    max_age=600,  # Cache preflight for 10 minutes
+    max_age=600,
 )
+
+# Include router
+app.include_router(api_router)
 
 # Configure logging
 logging.basicConfig(
@@ -933,9 +901,16 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize application"""
+    """Inicialização da aplicação"""
     await initialize_moderator()
+    logger.info("Filmes.br API inicializada com sucesso")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    """Fechamento da conexão com o banco"""
     client.close()
+    logger.info("Conexão com MongoDB fechada")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
