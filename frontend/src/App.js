@@ -2149,9 +2149,17 @@ const FilmDetailPage = () => {
           <div className="lg:col-span-2 space-y-6">
             <div>
               <h1 className="text-4xl font-bold text-green-800 mb-2">{film.title}</h1>
-              <div className="flex flex-wrap items-center gap-4 text-gray-600 mb-4">
-                {film.year && <span className="font-semibold">{film.year}</span>}
-                {film.director && <span>Direção: {film.director}</span>}
+              <div className="space-y-2 text-gray-600 mb-4">
+                <div className="flex flex-wrap items-center gap-4">
+                  {film.year && <span className="font-semibold">{film.year}</span>}
+                  {film.director && <span>Direção: {film.director}</span>}
+                </div>
+                {film.actors && film.actors.length > 0 && (
+                  <div className="text-sm">
+                    <span className="font-medium">Elenco: </span>
+                    {film.actors.join(', ')}
+                  </div>
+                )}
               </div>
               
               <div className="flex items-center space-x-6 mb-4">
