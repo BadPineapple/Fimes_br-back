@@ -157,7 +157,7 @@ class FilmList(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
     film_id: str
-    list_type: str = Field(..., regex="^(watched|to_watch|favorites)$")
+    list_type: str = Field(..., pattern="^(watched|to_watch|favorites)$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class FilmListCreate(BaseModel):
