@@ -1,10 +1,12 @@
+# app/main.py
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 
-from app.core.settings import settings
-from app.core.db import init_mongo, close_mongo
+from app.core.setting import settings  # <- 'setting' (singular)
+from app.database.database import create_tables, SessionLocal
 
 from app.routers import auth as auth_router
 from app.routers import users as users_router
@@ -14,8 +16,7 @@ from app.routers import film_lists as film_lists_router
 from app.routers import moderation as moderation_router
 from app.routers import ai as ai_router
 
-from app.services.init_data import initialize_moderator, initialize_sample_films
-from app.core.db import get_db
+from app.services.bootstrap import initialize_moderator, initialize_sample_films
 
 app = FastAPI(
     title=settings.TITLE,
@@ -28,7 +29,7 @@ app = FastAPI(
 # Middlewares de segurança
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.TRUSTED_HOSTS
+    allowed_hosts=settings.TRUSTED_HOSTS,
 )
 
 app.add_middleware(
@@ -52,25 +53,25 @@ app.include_router(ai_router.router, prefix="/api")
 # Logging básico
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
-    init_mongo(app)
-    # inicialização de dados
-    db = get_db  # dependency factory
-    # Pega a instância do DB através de um request fake não é ideal; então:
-    from starlette.requests import Request
-    class _R:  # pequeno truque: objeto com app para get_db
-        def __init__(self, app): self.app = app
-    _db = db(_R(app))
-    await initialize_moderator(_db)
-    await initialize_sample_films(_db)
+    # 1) Criar tabelas (síncrono) sem bloquear o event loop
+    await run_in_threadpool(create_tables)
+
+    # 2) Inicializar moderador e filmes de exemplo (síncronos)
+    db = SessionLocal()
+    try:
+        await run_in_threadpool(initialize_moderator, db)
+        await run_in_threadpool(initialize_sample_films, db)
+    finally:
+        db.close()
+
     logger.info("Filmes.br API inicializada com sucesso")
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await close_mongo(app)
-    logger.info("Conexão com MongoDB fechada")
+    logger.info("Aplicação encerrada")

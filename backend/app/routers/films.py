@@ -1,50 +1,105 @@
-from fastapi import APIRouter, Depends, HTTPException
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.core.db import get_db
-from app.schemas.film import Film, FilmCreate
+# app/routers/films.py
 from typing import List
+import json
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+
+from app.core.db import get_db
+from app.models.film import Film as FilmModel
+from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.schemas.film import Film, FilmCreate
 
 router = APIRouter(prefix="/films", tags=["films"])
 
 @router.get("", response_model=List[Film])
-async def get_films(db: AsyncIOMotorDatabase = Depends(get_db)):
-    films = await db.films.find().to_list(1000)
-    return [Film(**f) for f in films]
+async def get_films(db: Session = Depends(get_db)):
+    def _op():
+        result = db.execute(select(FilmModel).limit(1000))
+        return result.scalars().all()
+
+    films = await run_in_threadpool(_op)
+    return [Film.from_orm(f) for f in films]
+
 
 @router.get("/featured", response_model=List[Film])
-async def get_featured_films(db: AsyncIOMotorDatabase = Depends(get_db)):
-    films = await db.films.find().limit(12).to_list(12)
-    return [Film(**f) for f in films]
+async def get_featured_films(db: Session = Depends(get_db)):
+    def _op():
+        result = db.execute(select(FilmModel).limit(12))
+        return result.scalars().all()
+
+    films = await run_in_threadpool(_op)
+    return [Film.from_orm(f) for f in films]
+
 
 @router.get("/genres")
-async def get_available_genres(db: AsyncIOMotorDatabase = Depends(get_db)):
-    pipeline = [
-        {"$unwind": "$tags"},
-        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-    ]
-    genres = await db.films.aggregate(pipeline).to_list(100)
-    return [{"genre": g["_id"], "count": g["count"]} for g in genres]
+async def get_available_genres(db: Session = Depends(get_db)):
+    def _op():
+        result = db.execute(select(FilmModel.tags))
+        return result.scalars().all()
+
+    films_tags = await run_in_threadpool(_op)
+
+    # Processar tags JSON para contar gêneros (em memória)
+    genre_count = {}
+    for film_tags in films_tags:
+        if film_tags:
+            tags = json.loads(film_tags) if isinstance(film_tags, str) else film_tags
+            for tag in tags:
+                genre_count[tag] = genre_count.get(tag, 0) + 1
+
+    sorted_genres = sorted(genre_count.items(), key=lambda x: x[1], reverse=True)
+    return [{"genre": genre, "count": count} for genre, count in sorted_genres]
+
 
 @router.get("/by-genre/{genre}")
-async def get_films_by_genre(genre: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    films = await db.films.find({"tags": {"$regex": genre, "$options": "i"}}).to_list(1000)
-    return [Film(**f) for f in films]
+async def get_films_by_genre(genre: str, db: Session = Depends(get_db)):
+    # Observação: filtro textual no JSON; pode gerar falsos positivos
+    def _op():
+        result = db.execute(
+            select(FilmModel).where(FilmModel.tags.like(f"%{genre}%"))
+        )
+        return result.scalars().all()
+
+    films = await run_in_threadpool(_op)
+    return [Film.from_orm(f) for f in films]
+
 
 @router.get("/{film_id}", response_model=Film)
-async def get_film(film_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
-    film = await db.films.find_one({"id": film_id})
+async def get_film(film_id: str, db: Session = Depends(get_db)):
+    def _op():
+        result = db.execute(select(FilmModel).where(FilmModel.id == film_id))
+        return result.scalars().first()
+
+    film = await run_in_threadpool(_op)
     if not film:
         raise HTTPException(status_code=404, detail="Filme não encontrado")
-    return Film(**film)
+    return Film.from_orm(film)
+
 
 @router.post("", response_model=Film)
-async def create_film(film_data: FilmCreate, db: AsyncIOMotorDatabase = Depends(get_db)):
-    film = Film(**film_data.dict())
-    await db.films.insert_one(film.dict())
-    # métricas iniciais:
-    await db.film_metrics.update_one({"film_id": film.id}, {"$setOnInsert": {
-        "film_id": film.id, "favorites_count": 0, "watched_count": 0,
-        "average_rating": 0.0, "ratings_count": 0
-    }}, upsert=True)
-    return film
+async def create_film(film_data: FilmCreate, db: Session = Depends(get_db)):
+    def _op():
+        # Criar filme
+        film_model = FilmModel(**film_data.dict())
+        db.add(film_model)
+        db.commit()
+        db.refresh(film_model)
+
+        # Criar métricas iniciais
+        metrics = FilmMetricsModel(
+            film_id=film_model.id,
+            favorites_count=0,
+            watched_count=0,
+            average_rating=0.0,
+            ratings_count=0,
+        )
+        db.add(metrics)
+        db.commit()
+
+        return film_model
+
+    film_model = await run_in_threadpool(_op)
+    return Film.from_orm(film_model)

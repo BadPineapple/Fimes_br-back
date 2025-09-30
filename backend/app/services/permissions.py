@@ -1,19 +1,49 @@
-from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorDatabase
+# app/services/permissions.py
+from typing import Any, List
+import json
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from app.models.user import User as UserModel
 
-async def check_user_banned(db: AsyncIOMotorDatabase, user_id: str) -> bool:
-    now = datetime.now(timezone.utc)
-    ban = await db.user_bans.find_one({
-        "user_id": user_id,
-        "$or": [{"expires_at": None}, {"expires_at": {"$gt": now}}]
-    })
-    return ban is not None
+def check_user_banned(db: Session, user_id: str) -> bool:
+    """
+    Retorna True se o usuário estiver banido.
+    Placeholder: atualmente sempre retorna False.
+    """
+    # TODO: implementar tabela/lista de banimentos, ex.: UserBans
+    return False
 
-async def can_view_user_profile(db: AsyncIOMotorDatabase, viewer_id: str, profile_user_id: str) -> bool:
+def can_view_user_profile(db: Session, viewer_id: str, profile_user_id: str) -> bool:
+    """
+    Regras:
+      - O próprio usuário sempre pode ver.
+      - Se o perfil não existe ou não é privado, pode ver.
+      - Se é privado, somente amigos do perfil podem ver.
+    """
     if viewer_id == profile_user_id:
         return True
-    profile = await db.users.find_one({"id": profile_user_id})
-    if not profile or not profile.get("is_private", False):
+
+    # Carrega o perfil do usuário
+    profile = db.scalars(
+        select(UserModel).where(UserModel.id == profile_user_id)
+    ).first()
+
+    # Se não existe ou não é privado, acesso liberado
+    if not profile or not getattr(profile, "is_private", False):
         return True
-    viewer = await db.users.find_one({"id": viewer_id})
-    return bool(viewer and profile_user_id in viewer.get("friends", []))
+
+    # Perfil é privado: verificar se viewer é amigo
+    viewer = db.scalars(
+        select(UserModel).where(UserModel.id == viewer_id)
+    ).first()
+    if not viewer:
+        return False
+
+    friends = getattr(viewer, "friends", []) or []
+    if isinstance(friends, str):
+        try:
+            friends = json.loads(friends)
+        except Exception:
+            friends = []
+
+    return profile_user_id in friends

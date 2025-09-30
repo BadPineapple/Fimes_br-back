@@ -1,19 +1,23 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from fastapi import Request
-from .settings import settings
+# app/core/db.py
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-MONGO_CLIENT_KEY = "mongo_client"
-MONGO_DB_KEY = "mongo_db"
+# Use um caminho absoluto no seu projeto se preferir (ex.: sqlite:///./data/app.db)
+DATABASE_URL = "sqlite:///./app.db"
 
-def init_mongo(app) -> None:
-    client = AsyncIOMotorClient(settings.MONGO_URL)
-    app.state.__setattr__(MONGO_CLIENT_KEY, client)
-    app.state.__setattr__(MONGO_DB_KEY, client[settings.DB_NAME])
+# check_same_thread=False é necessário para SQLite em apps multi-thread (como FastAPI em prod)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
 
-async def close_mongo(app) -> None:
-    client: AsyncIOMotorClient = getattr(app.state, MONGO_CLIENT_KEY, None)
-    if client:
-        client.close()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-def get_db(request: Request) -> AsyncIOMotorDatabase:
-    return getattr(request.app.state, MONGO_DB_KEY)
+def get_db():
+    """Dependency que abre e fecha a sessão por requisição."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

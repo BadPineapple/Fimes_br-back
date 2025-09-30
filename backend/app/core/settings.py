@@ -12,8 +12,8 @@ class Settings:
     DOCS_URL = "/api/docs"
     REDOC_URL = "/api/redoc"
 
-    MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
-    DB_NAME = os.getenv("DB_NAME", "filmes_br")
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./filmes_br.db")
 
     CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",")]
     TRUSTED_HOSTS = [h.strip() for h in os.getenv("TRUSTED_HOSTS", "*").split(",")]
