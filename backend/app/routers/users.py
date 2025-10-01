@@ -4,18 +4,18 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
 from app.core.db import get_db
-from app.models.user import User as UserModel
+from app.database.models import User as UserModel
 from app.schemas.user import UserUpdate, User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.put("/{user_id}")
-async def update_user(user_id: str, updates: UserUpdate, db: Session = Depends(get_db)):
+async def update_user(user_id: str, updates: UserUpdate, db: AsyncSession = Depends(get_db)):
     def _op():
         update_dict = {k: v for k, v in updates.dict().items() if v is not None}
         # Somente moderadores poderiam alterar; removendo campo se vier
@@ -38,7 +38,7 @@ async def update_user(user_id: str, updates: UserUpdate, db: Session = Depends(g
 
 
 @router.post("/{user_id}/friends/{friend_id}")
-async def add_friend(user_id: str, friend_id: str, db: Session = Depends(get_db)):
+async def add_friend(user_id: str, friend_id: str, db: AsyncSession = Depends(get_db)):
     """
     Adiciona 'friend_id' à lista de amigos de 'user_id' e faz o mesmo no inverso.
     O campo 'friends' pode estar armazenado como JSON (str) ou lista; tratamos ambos.

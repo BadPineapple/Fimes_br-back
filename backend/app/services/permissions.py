@@ -1,11 +1,11 @@
 # app/services/permissions.py
 from typing import Any, List
 import json
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.user import User as UserModel
+from app.database.models import User as UserModel
 
-def check_user_banned(db: Session, user_id: str) -> bool:
+async def check_user_banned(db: AsyncSession, user_id: str) -> bool:
     """
     Retorna True se o usuário estiver banido.
     Placeholder: atualmente sempre retorna False.
@@ -13,7 +13,7 @@ def check_user_banned(db: Session, user_id: str) -> bool:
     # TODO: implementar tabela/lista de banimentos, ex.: UserBans
     return False
 
-def can_view_user_profile(db: Session, viewer_id: str, profile_user_id: str) -> bool:
+async def can_view_user_profile(db: AsyncSession, viewer_id: str, profile_user_id: str) -> bool:
     """
     Regras:
       - O próprio usuário sempre pode ver.

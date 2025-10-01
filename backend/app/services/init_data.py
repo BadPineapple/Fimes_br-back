@@ -2,17 +2,17 @@
 import logging
 from typing import List, Dict
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.schemas.user import User as UserSchema
 from app.schemas.film import Film as FilmSchema
-from app.models.user import User as UserModel
-from app.models.film import Film as FilmModel
+from app.database.models import User as UserModel
+from app.database.models import Film as FilmModel
 from app.services.metrics import update_film_metrics
 
 
-def initialize_moderator(db: Session) -> None:
+async def initialize_moderator(db: AsyncSession) -> None:
     """Garante a existência de um usuário moderador padrão."""
     email = "moderador@moderador.com"  # normalizado em minúsculas
     moderator = db.scalars(select(UserModel).where(UserModel.email == email)).first()
@@ -31,7 +31,7 @@ def initialize_moderator(db: Session) -> None:
     logging.info("Moderador criado com sucesso")
 
 
-def initialize_sample_films(db: Session) -> None:
+async def initialize_sample_films(db: AsyncSession) -> None:
     """Popula o banco com alguns filmes de exemplo (se ainda não houver filmes)."""
     existing = db.execute(select(func.count(FilmModel.id))).scalar() or 0
     if existing > 0:

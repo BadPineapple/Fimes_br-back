@@ -1,11 +1,11 @@
 # app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.db import get_db
-from app.models.user import User as UserModel
+from app.database.models import User as UserModel
 from app.schemas.user import User
 from app.services.rate_limit import check_rate_limit
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login")
-async def login_user(email: str, request: Request, db: Session = Depends(get_db)):
+async def login_user(email: str, request: Request, db: AsyncSession = Depends(get_db)):
     client_ip = request.client.host
     if not check_rate_limit(client_ip, max_requests=5, window_seconds=300):
         raise HTTPException(status_code=429, detail="Muitas tentativas de login")
@@ -47,7 +47,7 @@ async def login_user(email: str, request: Request, db: Session = Depends(get_db)
 
 
 @router.get("/me")
-async def get_current_user(user_id: str, db: Session = Depends(get_db)):
+async def get_current_user(user_id: str, db: AsyncSession = Depends(get_db)):
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id é obrigatório")
 
@@ -68,7 +68,7 @@ async def get_current_user(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/test-user")
-async def get_test_user(db: Session = Depends(get_db)):
+async def get_test_user(db: AsyncSession = Depends(get_db)):
     test_email = "cinefilo.teste@filmes.br"
 
     def _get_by_email() -> UserModel | None:

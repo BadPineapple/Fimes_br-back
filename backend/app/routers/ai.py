@@ -1,11 +1,11 @@
 # app/routers/ai.py
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.db import get_db
-from app.models.film import Film
+from app.database.models import Film
 from app.schemas.ai import AIRecommendationRequest, AIRecommendationResponse
 from app.services.ai_recommender import recommend_from_description
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.post("/recommend", response_model=AIRecommendationResponse)
 async def get_ai_recommendations(
     request_data: AIRecommendationRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     try:
         # Busca só os títulos (máx. 100) sem bloquear o event loop

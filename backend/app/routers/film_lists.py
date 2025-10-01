@@ -2,16 +2,16 @@
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, update
 
 from app.core.db import get_db
 from app.schemas.film_list import FilmList, FilmListCreate
 from app.schemas.film import Film
-from app.models.film_list import FilmList as FilmListModel
-from app.models.film import Film as FilmModel
-from app.models.user_rating import UserRating as UserRatingModel
-from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.database.models import FilmList as FilmListModel
+from app.database.models import Film as FilmModel
+from app.database.models import UserRating as UserRatingModel
+from app.database.models import FilmMetrics as FilmMetricsModel
 from app.services.rate_limit import check_rate_limit
 from app.services.permissions import check_user_banned, can_view_user_profile
 
@@ -23,7 +23,7 @@ async def add_to_film_list(
     user_id: str,
     list_data: FilmListCreate,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Adicionar filme à lista do usuário"""
 
@@ -77,7 +77,7 @@ async def add_to_film_list(
 
 @router.delete("/{user_id}/film-lists/{film_id}/{list_type}")
 async def remove_from_film_list(
-    user_id: str, film_id: str, list_type: str, db: Session = Depends(get_db)
+    user_id: str, film_id: str, list_type: str, db: AsyncSession = Depends(get_db)
 ):
     """Remover filme da lista do usuário"""
 
@@ -109,7 +109,7 @@ async def get_user_film_list(
     user_id: str,
     list_type: str,
     viewer_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Obter lista de filmes do usuário, respeitando privacidade"""
 
@@ -143,7 +143,7 @@ async def get_user_film_list(
         raise HTTPException(status_code=500, detail=f"Erro ao buscar lista: {str(e)}")
 
 
-async def update_film_metrics(film_id: str, db: Session):
+async def update_film_metrics(film_id: str, db: AsyncSession):
     """Atualizar métricas agregadas do filme (favoritos, assistidos, média/qtde de notas)"""
     from datetime import datetime, timezone
 

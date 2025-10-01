@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_
 
 from app.core.db import get_db
@@ -13,11 +13,11 @@ from app.schemas.moderation import CommentReportCreate, CommentReport
 from app.services.rate_limit import check_rate_limit
 from app.services.permissions import check_user_banned
 
-from app.models.user import User as UserModel
-from app.models.user_rating import UserRating as UserRatingModel
-from app.models.comment_report import CommentReport as CommentReportModel
-from app.models.film import Film as FilmModel
-from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.database.models import User as UserModel
+from app.database.models import UserRating as UserRatingModel
+from app.database.models import CommentReport as CommentReportModel
+from app.database.models import Film as FilmModel
+from app.database.models import FilmMetrics as FilmMetricsModel
 
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
@@ -27,7 +27,7 @@ async def report_comment(
     report_data: CommentReportCreate,
     user_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Registrar denúncia de um comentário (user_rating).
@@ -91,7 +91,7 @@ async def report_comment(
 @router.get("/reports")
 async def get_pending_reports(
     moderator_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Lista denúncias pendentes com dados do comentário e do autor da denúncia.
@@ -167,7 +167,7 @@ async def get_pending_reports(
 @router.get("/dashboard")
 async def get_moderator_dashboard(
     moderator_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     KPIs do moderador:

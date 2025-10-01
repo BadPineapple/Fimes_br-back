@@ -4,18 +4,19 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.database.database import get_session
 
 from app.core.db import get_db
-from app.models.film import Film as FilmModel
-from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.database.models import Film as FilmModel
+from app.database.models import FilmMetrics as FilmMetricsModel
 from app.schemas.film import Film, FilmCreate
 
 router = APIRouter(prefix="/films", tags=["films"])
 
 @router.get("", response_model=List[Film])
-async def get_films(db: Session = Depends(get_db)):
+async def get_films(db: AsyncSession = Depends(get_db)):
     def _op():
         result = db.execute(select(FilmModel).limit(1000))
         return result.scalars().all()
@@ -24,18 +25,20 @@ async def get_films(db: Session = Depends(get_db)):
     return [Film.from_orm(f) for f in films]
 
 
-@router.get("/featured", response_model=List[Film])
-async def get_featured_films(db: Session = Depends(get_db)):
-    def _op():
-        result = db.execute(select(FilmModel).limit(12))
-        return result.scalars().all()
-
-    films = await run_in_threadpool(_op)
-    return [Film.from_orm(f) for f in films]
+@router.get("/featured")
+async def get_featured_films(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(FilmModel).order_by(FilmModel.created_at.desc()).limit(12)
+    )
+    films = result.scalars().all()
+    return [
+        {"id": f.id, "title": f.title, "year": f.year, "banner_url": f.banner_url}
+        for f in films
+    ]
 
 
 @router.get("/genres")
-async def get_available_genres(db: Session = Depends(get_db)):
+async def get_available_genres(db: AsyncSession = Depends(get_db)):
     def _op():
         result = db.execute(select(FilmModel.tags))
         return result.scalars().all()
@@ -55,7 +58,7 @@ async def get_available_genres(db: Session = Depends(get_db)):
 
 
 @router.get("/by-genre/{genre}")
-async def get_films_by_genre(genre: str, db: Session = Depends(get_db)):
+async def get_films_by_genre(genre: str, db: AsyncSession = Depends(get_db)):
     # Observação: filtro textual no JSON; pode gerar falsos positivos
     def _op():
         result = db.execute(
@@ -68,7 +71,7 @@ async def get_films_by_genre(genre: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{film_id}", response_model=Film)
-async def get_film(film_id: str, db: Session = Depends(get_db)):
+async def get_film(film_id: str, db: AsyncSession = Depends(get_db)):
     def _op():
         result = db.execute(select(FilmModel).where(FilmModel.id == film_id))
         return result.scalars().first()
@@ -80,7 +83,7 @@ async def get_film(film_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=Film)
-async def create_film(film_data: FilmCreate, db: Session = Depends(get_db)):
+async def create_film(film_data: FilmCreate, db: AsyncSession = Depends(get_db)):
     def _op():
         # Criar filme
         film_model = FilmModel(**film_data.dict())

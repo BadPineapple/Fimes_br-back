@@ -1,14 +1,14 @@
 # app/services/metrics.py
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
 
-from app.models.film_list import FilmList as FilmListModel
-from app.models.user_rating import UserRating as UserRatingModel
-from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.database.models import FilmList as FilmListModel
+from app.database.models import UserRating as UserRatingModel
+from app.database.models import FilmMetrics as FilmMetricsModel
 
 
-def update_film_metrics(db: Session, film_id: str) -> None:
+async def update_film_metrics(db: AsyncSession, film_id: str) -> None:
     """Recalcula métricas do filme (favoritos, assistidos, média/qtde de notas) e persiste no banco.
     Observação: se chamar a partir de um endpoint async, execute dentro de run_in_threadpool.
     """

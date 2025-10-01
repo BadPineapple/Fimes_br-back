@@ -2,14 +2,14 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 
 from app.core.db import get_db
-from app.models.film import Film as FilmModel
-from app.models.user_rating import UserRating as UserRatingModel
-from app.models.user import User as UserModel
-from app.models.film_metrics import FilmMetrics as FilmMetricsModel
+from app.database.models import Film as FilmModel
+from app.database.models import UserRating as UserRatingModel
+from app.database.models import User as UserModel
+from app.database.models import FilmMetrics as FilmMetricsModel
 from app.schemas.rating import UserRatingCreate, UserRating
 from app.services.rate_limit import check_rate_limit
 from app.services.permissions import check_user_banned
@@ -23,7 +23,7 @@ async def create_rating(
     rating_data: UserRatingCreate,
     user_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     client_ip = request.client.host
     if not check_rate_limit(client_ip, max_requests=5, window_seconds=300):
@@ -72,7 +72,7 @@ async def create_rating(
 
 
 @router.get("")
-async def get_film_ratings(film_id: str, db: Session = Depends(get_db)):
+async def get_film_ratings(film_id: str, db: AsyncSession = Depends(get_db)):
     def _op():
         # JOIN ratings ← users para trazer nome e avatar
         result = db.execute(
@@ -102,7 +102,7 @@ async def get_film_ratings(film_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/average")
-async def get_film_average_rating(film_id: str, db: Session = Depends(get_db)):
+async def get_film_average_rating(film_id: str, db: AsyncSession = Depends(get_db)):
     def _op():
         result = db.execute(
             select(func.avg(UserRatingModel.rating), func.count(UserRatingModel.id)).where(
@@ -118,7 +118,7 @@ async def get_film_average_rating(film_id: str, db: Session = Depends(get_db)):
 
 
 # --------- Utilitário local para métricas (equivalente ao serviço antigo) ---------
-async def recalc_film_metrics(film_id: str, db: Session):
+async def recalc_film_metrics(film_id: str, db: AsyncSession):
     """Recalcula favorites_count, watched_count, average_rating e ratings_count em FilmMetrics."""
     from datetime import datetime, timezone
 

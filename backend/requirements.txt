@@ -24,3 +24,4 @@ httpx==0.28.1
 # --- Utilidades ---
 anyio==4.10.0
 typing_extensions==4.15.0
+pydantic[email]==2.5.0

@@ -1,31 +1,49 @@
 # app/database/database.py
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from .models import Base
-from ..core.setting import settings  # observe: 'setting' (singular), como ajustado antes
+from __future__ import annotations
 
-# Cria o engine síncrono para SQLite
-# check_same_thread=False é necessário quando o SQLite é acessado por múltiplas threads (FastAPI + threadpool)
-engine = create_engine(
-    settings.DATABASE_URL,              # ex.: "sqlite:///./filmes_br.db"
-    echo=False,                         # True para logs SQL em debug
-    connect_args={"check_same_thread": False},
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import event
+from typing import AsyncGenerator
+
+from app.core.settings import settings
+
+# Base única do projeto (não importe Base de "models"!)
+class Base(DeclarativeBase):
+    pass
+
+# Engine async (SQLite via aiosqlite)
+DATABASE_URL = settings.DATABASE_URL
+engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+
+# PRAGMAs úteis para SQLite (FKs + WAL)
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragmas(dbapi_conn, _):
+    try:
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON;")
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.close()
+    except Exception:
+        pass  # se não for SQLite, ignora
+
+# Fabrica de sessões async
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
 )
 
-# Session factory (síncrona)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
 
-def create_tables() -> None:
-    """Cria todas as tabelas conforme os modelos declarados em Base."""
-    Base.metadata.create_all(bind=engine)
+# Dependência para FastAPI
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
 
-def get_db():
-    """
-    Dependency do FastAPI que fornece uma Session por request.
-    Em rotas async, use operações de DB dentro de run_in_threadpool para não bloquear o event loop.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# (Opcional) criar tabelas em dev; em produção use Alembic
+async def create_tables() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
