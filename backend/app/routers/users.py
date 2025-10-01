@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
-from app.core.db import get_db
+from app.database.database import get_db
 from app.database.models import User as UserModel
 from app.schemas.user import UserUpdate, User
 

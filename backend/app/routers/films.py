@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database.database import get_session
 
-from app.core.db import get_db
+from app.database.database import get_db
 from app.database.models import Film as FilmModel
 from app.database.models import FilmMetrics as FilmMetricsModel
 from app.schemas.film import Film, FilmCreate

@@ -11,7 +11,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 # Use o Base central do projeto (em vez de declarative_base local)
-from app.core.db import Base
+from app.database.database import Base
 
 
 def _uuid_str() -> str:

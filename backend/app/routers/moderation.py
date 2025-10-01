@@ -8,7 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_
 
-from app.core.db import get_db
+from app.database.database import get_db
 from app.schemas.moderation import CommentReportCreate, CommentReport
 from app.services.rate_limit import check_rate_limit
 from app.services.permissions import check_user_banned

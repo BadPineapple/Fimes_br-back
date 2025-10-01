@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, update
 
-from app.core.db import get_db
+from app.database.database import get_db
 from app.schemas.film_list import FilmList, FilmListCreate
 from app.schemas.film import Film
 from app.database.models import FilmList as FilmListModel
