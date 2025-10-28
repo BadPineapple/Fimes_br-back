@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String  @id @default(cuid())
+  name         String?
+  email        String  @unique
+  passwordHash String? // opcional: atualmente login por e-mail apenas
+  role         String  @default("user") // 'user' | 'moderator' | 'admin'
+  isSupporter  Boolean @default(false)
+  isPrivate    Boolean @default(false)
+  description  String? 
+  avatarUrl    String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ratings      Rating[]
+}
+
+model Film {
+  id          String   @id @default(cuid())
+  title       String
+  year        Int?
+  synopsis    String?
+  coverUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ratings     Rating[]
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  userId    String
+  filmId    String
+  score     Int      // 1..5, por exemplo
+  comment   String?
+  createdAt DateTime @default(now())
+
+  user  User @relation(fields: [userId], references: [id])
+  film  Film @relation(fields: [filmId], references: [id])
+
+  @@unique([userId, filmId]) // 1 avaliação por usuário/filme
+}

@@ -1,3 +1,4 @@
+// frontend/src/App.jsx
 import React from "react";
 import {
   BrowserRouter,
@@ -26,16 +27,19 @@ import "./index.css";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  React.useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+  React.useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   return null;
 }
 
 function RequireModerator({ children }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  // evita flicker enquanto restaura sessão
+  if (loading) return null;
+
   if (!user) return <Navigate to="/" replace />;
-  if (user.role !== "moderator") return <Navigate to="/" replace />;
+  const allowed = user.role === "moderator" || user.role === "admin";
+  if (!allowed) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -71,7 +75,7 @@ export default function App() {
           <Footer />
         </div>
 
-        {/* Toaster global (remova se não existir no projeto) */}
+        {/* Toaster global */}
         {typeof Toaster !== "undefined" && <Toaster />}
       </BrowserRouter>
     </AuthProvider>

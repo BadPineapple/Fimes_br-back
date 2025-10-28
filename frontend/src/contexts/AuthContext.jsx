@@ -1,6 +1,6 @@
 // frontend/src/contexts/AuthContext.jsx
 import React from "react";
-import api from "../services/api";
+import api, { setAuthToken, clearAuthToken } from "../services/api";
 
 export const AuthContext = React.createContext(null);
 export const useAuth = () => React.useContext(AuthContext);
@@ -11,83 +11,126 @@ export function AuthProvider({ children }) {
 
   const isAuthenticated = !!user?.id;
 
-  const login = async (email) => {
+  async function login(email, name) {
     setLoading(true);
     try {
-      let res;
-      try {
-        res = await api.post("/auth/login", { email });
-      } catch (e) {
-        res = await api.post(`/auth/login?email=${encodeURIComponent(email)}`);
-      }
-
+      const res = await api.post("/auth/login", { email, name });
       const data = res?.data;
-      if (!data?.id) {
-        throw new Error("Resposta de login inválida: faltando id");
+
+      if (!data?.token || !data?.user?.id) {
+        const legacy = await api.post(`/auth/login?email=${encodeURIComponent(email)}`);
+        if (!legacy?.data?.id) 
+          throw new Error("Resposta de login inválida");
+        setUser(legacy.data);
+        localStorage.setItem("userId", String(legacy.data.id));
+        return legacy.data;
       }
 
-      setUser(data);
-      localStorage.setItem("userId", String(data.id));
-      return data;
+      // Guarda e injeta token
+      localStorage.setItem("token", data.token);
+      setAuthToken(data.token);
+
+      // (compat) ainda grava userId para telas antigas que esperem isso
+      localStorage.setItem("userId", String(data.user.id));
+
+      setUser(data.user);
+      return data.user;
     } catch (err) {
+      // limpa tudo em caso de erro
       setUser(null);
+      localStorage.removeItem("token");
       localStorage.removeItem("userId");
+      clearAuthToken();
       throw err;
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const logout = () => {
+  function logout() {
     setUser(null);
+    localStorage.removeItem("token");
     localStorage.removeItem("userId");
-  };
+    clearAuthToken();
+  }
 
   React.useEffect(() => {
     let mounted = true;
-    const userId = localStorage.getItem("userId");
 
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
+    async function restore() {
       try {
-        const r = await api.get(`/auth/me?user_id=${encodeURIComponent(userId)}`);
-        if (mounted) setUser(r.data);
+        // 1) Prioriza token JWT novo
+        const token = localStorage.getItem("token");
+        if (token) {
+          setAuthToken(token);
+          const r = await api.get("/auth/me"); // Bearer token via interceptor
+          if (mounted) {
+            setUser(r.data);
+            return;
+          }
+        }
+
+        // 2) Fallback legado: se só existir userId, tenta /auth/me?user_id=
+        const userId = localStorage.getItem("userId");
+        if (userId) {
+          const r = await api.get(`/auth/me?user_id=${encodeURIComponent(userId)}`);
+          if (mounted) {
+            setUser(r.data);
+            return;
+          }
+        }
+
+        // 3) Sem sessão
+        if (mounted) {
+          setUser(null);
+          clearAuthToken();
+        }
       } catch {
         if (mounted) {
-          localStorage.removeItem("userId");
           setUser(null);
+          localStorage.removeItem("token");
+          localStorage.removeItem("userId");
+          clearAuthToken();
         }
       } finally {
         if (mounted) setLoading(false);
       }
-    })();
+    }
 
-    return () => {
-      mounted = false;
-    };
+    restore();
+    return () => { mounted = false; };
   }, []);
 
+  // Sincroniza sessão entre abas (token e userId, por compat)
   React.useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === "userId") {
-        const next = e.newValue;
-        if (!next) {
-          setUser(null);
-        } else {
+    function onStorage(e) {
+      if (e.key === "token" || e.key === "userId") {
+        const nextToken = localStorage.getItem("token");
+        const nextUserId = localStorage.getItem("userId");
+
+        if (nextToken) {
+          setAuthToken(nextToken);
+          api.get("/auth/me")
+            .then((r) => setUser(r.data))
+            .catch(() => {
+              localStorage.removeItem("token");
+              clearAuthToken();
+              setUser(null);
+            });
+        } else if (nextUserId) {
           api
-            .get(`/auth/me?user_id=${encodeURIComponent(next)}`)
+            .get(`/auth/me?user_id=${encodeURIComponent(nextUserId)}`)
             .then((r) => setUser(r.data))
             .catch(() => {
               localStorage.removeItem("userId");
               setUser(null);
             });
+        } else {
+          clearAuthToken();
+          setUser(null);
         }
       }
-    };
+    }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);

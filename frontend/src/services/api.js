@@ -1,22 +1,21 @@
 import axios from "axios";
 
-const CRA_BASE = process.env.REACT_APP_BACKEND_URL;
-const VITE_BASE = typeof import.meta !== "undefined" && import.meta.env
-  ? import.meta.env.VITE_API_BASE_URL
-  : undefined;
+// Apenas Vite (sem CRA no browser)
+const VITE = (typeof import.meta !== "undefined" && import.meta.env) || {};
 
-const HARDCODED_BASE = "http://localhost:8001";
+// Prioridade: VITE_API_URL -> VITE_API_BASE_URL (legado) -> fallback 3333
+const BASE =
+  VITE.VITE_API_URL ||
+  VITE.VITE_API_BASE_URL ||
+  "http://localhost:3333";
 
-const BACKEND_URL = (VITE_BASE || CRA_BASE || HARDCODED_BASE).replace(/\/+$/, "");
-export const API_BASE = `${BACKEND_URL}/api`;
+const BACKEND_URL = String(BASE).replace(/\/+$/, "");
+export const API_BASE = BACKEND_URL;
 
-if (process.env.NODE_ENV !== "production") {
+if (import.meta.env.DEV) {
   console.log("=== API CONFIG DEBUG ===");
-  console.log("[CRA] REACT_APP_BACKEND_URL:", CRA_BASE);
-
-  const viteShown = typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
-  console.log("[VITE] VITE_API_BASE_URL:", viteShown);
-  console.log("BACKEND_URL (resolved):", BACKEND_URL);
+  console.log("VITE_API_URL:", VITE.VITE_API_URL);
+  console.log("VITE_API_BASE_URL (legacy):", VITE.VITE_API_BASE_URL);
   console.log("API_BASE:", API_BASE);
 }
 
@@ -29,32 +28,36 @@ const api = axios.create({
   },
 });
 
-let authToken = null;
-
-export function setAuthToken(token) {
-  authToken = token;
-  if (token) {
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
-  } else {
-    delete api.defaults.headers.common.Authorization;
+// injeta token do localStorage se não tiver sido setado manualmente
+api.interceptors.request.use((config) => {
+  if (!config.headers.Authorization) {
+    const token = localStorage.getItem("token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
   }
-}
-
-export function clearAuthToken() {
-  authToken = null;
-  delete api.defaults.headers.common.Authorization;
-}
+  return config;
+});
 
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    const status = error?.response?.status;
-    const url = error?.config?.url;
-    if (process.env.NODE_ENV !== "production") {
+    if (import.meta.env.DEV) {
+      const status = error?.response?.status;
+      const url = error?.config?.url;
       console.warn("[API ERROR]", status, url, error?.message);
     }
     return Promise.reject(error);
   }
 );
+
+let authToken = null;
+export function setAuthToken(token) {
+  authToken = token;
+  if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  else delete api.defaults.headers.common.Authorization;
+}
+export function clearAuthToken() {
+  authToken = null;
+  delete api.defaults.headers.common.Authorization;
+}
 
 export default api;
