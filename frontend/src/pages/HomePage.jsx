@@ -16,9 +16,14 @@ export default function HomePage() {
     let mounted = true;
     (async () => {
       try {
-        const r = await api.get("/films/featured");
+        // se o back tiver paginação, pode usar params { page:1, pageSize:12 }
+        const r = await api.get("/films");
         if (!mounted) return;
-        setFeatured(Array.isArray(r.data) ? r.data : []);
+
+        const data = r?.data ?? [];
+        const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+        // escolha 12 “destaques” (aqui: os 12 primeiros)
+        setFeatured(items.slice(0, 12));
       } catch (e) {
         console.error(e);
         toast({ title: "Erro ao carregar filmes em destaque.", duration: 3000 });
@@ -26,9 +31,7 @@ export default function HomePage() {
         if (mounted) setLoading(false);
       }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [toast]);
 
   if (loading) {
@@ -66,9 +69,7 @@ export default function HomePage() {
 
           {featured.length ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-              {featured.map((f) => (
-                <FilmCard key={f.id} film={f} />
-              ))}
+              {featured.map((f) => <FilmCard key={f.id} film={f} />)}
             </div>
           ) : (
             <div className="text-center py-12">

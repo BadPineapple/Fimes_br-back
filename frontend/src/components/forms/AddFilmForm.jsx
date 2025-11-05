@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useToast } from "../../hooks/use-toast";
 
 function isValidHttpUrl(str) {
+  if (!str) return false;
   try {
     const u = new URL(str);
     return u.protocol === "http:" || u.protocol === "https:";
@@ -19,65 +20,41 @@ function isValidHttpUrl(str) {
 
 export default function AddFilmForm({ onSuccess }) {
   const { toast } = useToast();
+
   const [form, setForm] = React.useState({
     title: "",
-    banner_url: "",
-    description: "",
+    originalTitle: "",
     year: "",
-    director: "",
-    actors: "",
-    imdb_rating: "",
-    letterboxd_rating: "",
-    tags: "",
-    watch_links: [{ platform: "", url: "" }],
+    runtimeMin: "",
+    coverUrl: "",
+    synopsis: "",
   });
+
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
-
-  const addWatch = () =>
-    setForm((f) => ({ ...f, watch_links: [...f.watch_links, { platform: "", url: "" }] }));
-
-  const updateWatch = (i, field, value) => {
-    setForm((f) => {
-      const n = f.watch_links.slice();
-      n[i] = { ...n[i], [field]: value };
-      return { ...f, watch_links: n };
-    });
-  };
-
-  const removeWatch = (i) =>
-    setForm((f) => ({ ...f, watch_links: f.watch_links.filter((_, idx) => idx !== i) }));
 
   const submit = (e) => {
     e.preventDefault();
     setShowConfirm(true);
   };
 
-  function parseYear(v) {
+  // helpers de validação/conversão
+  const parseYear = (v) => {
+    if (v === "" || v == null) return null;
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
     if (n < 1895 || n > 2100) return null;
     return n;
-  }
-  function parseImdb(v) {
+  };
+
+  const parseRuntime = (v) => {
+    if (v === "" || v == null) return null;
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
-    return Math.min(10, Math.max(0, n));
-  }
-  function parseLb(v) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return null;
-    return Math.min(5, Math.max(0, n));
-  }
-  function computeUnifiedRating(imdb10, lb5) {
-    const vals = [];
-    if (imdb10 != null) vals.push(imdb10);
-    if (lb5 != null) vals.push(lb5 * 2); 
-    if (!vals.length) return null;
-    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    return Math.round(avg * 10) / 10; 
-  }
+    if (n <= 0 || n > 1000) return null; // limite razoável
+    return Math.round(n);
+  };
 
   const confirm = async () => {
     if (password !== "1357") {
@@ -85,47 +62,22 @@ export default function AddFilmForm({ onSuccess }) {
       return;
     }
 
-    const year = parseYear(form.year);
-    const imdb = parseImdb(form.imdb_rating);
-    const lb = parseLb(form.letterboxd_rating);
-
-    const tags = form.tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
-    const actors = form.actors
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
-    const watch_links = form.watch_links
-      .map((l) => ({ platform: l.platform.trim(), url: l.url.trim() }))
-      .filter((l) => l.platform && l.url && isValidHttpUrl(l.url));
-
     const payload = {
       title: form.title.trim(),
-      poster_url: form.banner_url.trim() || undefined,
-      synopsis: form.description.trim(),
-      year,
-      director: form.director.trim() || undefined,
-      actors,
-      genres: tags,
-      rating: computeUnifiedRating(imdb, lb),
-      ratings: {
-        imdb: imdb ?? null,
-        letterboxd: lb ?? null,
-      },
-      watch_links,
-      banner_url: form.banner_url.trim() || undefined,
-      description: form.description.trim(),
-      imdb_rating: imdb,
-      letterboxd_rating: lb,
-      tags, 
+      originalTitle: form.originalTitle.trim() || undefined,
+      year: parseYear(form.year),
+      runtimeMin: parseRuntime(form.runtimeMin),
+      synopsis: form.synopsis.trim(),
+      coverUrl: form.coverUrl.trim() || undefined,
     };
 
     if (!payload.title || !payload.synopsis) {
       toast({ title: "Preencha os campos obrigatórios (Título e Sinopse).", duration: 3000 });
+      return;
+    }
+
+    if (form.coverUrl && !isValidHttpUrl(form.coverUrl)) {
+      toast({ title: "URL da capa inválida.", duration: 2500 });
       return;
     }
 
@@ -134,17 +86,14 @@ export default function AddFilmForm({ onSuccess }) {
       await api.post("/films", payload);
       toast({ title: "Filme adicionado com sucesso!", duration: 2500 });
       onSuccess?.();
+      // reset
       setForm({
         title: "",
-        banner_url: "",
-        description: "",
+        originalTitle: "",
         year: "",
-        director: "",
-        actors: "",
-        imdb_rating: "",
-        letterboxd_rating: "",
-        tags: "",
-        watch_links: [{ platform: "", url: "" }],
+        runtimeMin: "",
+        coverUrl: "",
+        synopsis: "",
       });
       setShowConfirm(false);
       setPassword("");
@@ -160,8 +109,9 @@ export default function AddFilmForm({ onSuccess }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-blue-800">Adicionar Novo Filme Brasileiro</CardTitle>
-        <CardDescription>Preencha as informações do filme para adicionar ao catálogo</CardDescription>
+        <CardDescription>Cadastre os dados base do filme. Relacionamentos (gêneros, tags, pessoas, onde assistir) são feitos nas outras abas.</CardDescription>
       </CardHeader>
+
       <CardContent>
         <form onSubmit={submit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -174,13 +124,16 @@ export default function AddFilmForm({ onSuccess }) {
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-2">Diretor</label>
+                <label className="block text-sm font-medium mb-2">Título Original</label>
                 <Input
-                  value={form.director}
-                  onChange={(e) => setForm({ ...form, director: e.target.value })}
+                  value={form.originalTitle}
+                  onChange={(e) => setForm({ ...form, originalTitle: e.target.value })}
+                  placeholder="se diferente do título em PT-BR"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium mb-2">Ano</label>
                 <Input
@@ -190,55 +143,31 @@ export default function AddFilmForm({ onSuccess }) {
                   max="2100"
                   value={form.year}
                   onChange={(e) => setForm({ ...form, year: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">URL da Capa</label>
-                <Input
-                  placeholder="https://..."
-                  value={form.banner_url}
-                  onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                  placeholder="ex.: 2002"
                 />
               </div>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">IMDB Rating (0–10)</label>
+                <label className="block text-sm font-medium mb-2">Duração (minutos)</label>
                 <Input
                   type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  value={form.imdb_rating}
-                  onChange={(e) => setForm({ ...form, imdb_rating: e.target.value })}
+                  inputMode="numeric"
+                  min="1"
+                  max="1000"
+                  value={form.runtimeMin}
+                  onChange={(e) => setForm({ ...form, runtimeMin: e.target.value })}
+                  placeholder="ex.: 130"
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-2">Letterboxd Rating (0–5)</label>
+                <label className="block text-sm font-medium mb-2">URL da Capa</label>
                 <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="5"
-                  value={form.letterboxd_rating}
-                  onChange={(e) => setForm({ ...form, letterboxd_rating: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Atores Principais</label>
-                <Input
-                  value={form.actors}
-                  onChange={(e) => setForm({ ...form, actors: e.target.value })}
-                  placeholder="separe por vírgula"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Tags/Gêneros</label>
-                <Input
-                  value={form.tags}
-                  onChange={(e) => setForm({ ...form, tags: e.target.value })}
-                  placeholder="separe por vírgula"
+                  placeholder="https://..."
+                  value={form.coverUrl}
+                  onChange={(e) => setForm({ ...form, coverUrl: e.target.value })}
                 />
               </div>
             </div>
@@ -248,44 +177,13 @@ export default function AddFilmForm({ onSuccess }) {
             <label className="block text-sm font-medium mb-2">Sinopse *</label>
             <Textarea
               rows={4}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              value={form.synopsis}
+              onChange={(e) => setForm({ ...form, synopsis: e.target.value })}
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Onde Assistir</label>
-            {form.watch_links.map((l, i) => (
-              <div key={i} className="flex gap-2 mb-2">
-                <Input
-                  className="flex-1"
-                  placeholder="Plataforma"
-                  value={l.platform}
-                  onChange={(e) => updateWatch(i, "platform", e.target.value)}
-                />
-                <Input
-                  className="flex-1"
-                  placeholder="URL"
-                  value={l.url}
-                  onChange={(e) => updateWatch(i, "url", e.target.value)}
-                />
-                {form.watch_links.length > 1 && (
-                  <Button type="button" variant="outline" className="px-3" onClick={() => removeWatch(i)}>
-                    ✕
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button type="button" variant="outline" onClick={addWatch} className="mt-2">
-              + Adicionar Link
-            </Button>
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700"
-          >
+          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
             Adicionar Filme ao Catálogo
           </Button>
         </form>

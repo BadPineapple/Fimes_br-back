@@ -1,16 +1,24 @@
 import React from "react";
-import api from "../services/api";
-import { useAuth } from "../contexts/AuthContext"; 
+import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import ManageGenresForm from "../components/forms/ManageGenresForm";
+import ManageTagsForm from "../components/forms/ManageTagsForm";
+import ManagePlatformsForm from "../components/forms/ManagePlatformsForm";
+import ManagePeopleForm from "../components/forms/ManagePeopleForm";
+import LinkFilmRelationsForm from "../components/forms/LinkFilmRelationsForm";
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Film, MessageSquare, Star, User } from "lucide-react";
 import AddFilmForm from "../components/forms/AddFilmForm";
 import { useToast } from "../hooks/use-toast";
+
+// Flags: desative recursos sem backend
+const FEATURE_MODERATION = false; // /moderation/*
+const MOD_PASSWORD = "1357";
 
 export default function ModeratorDashboard() {
   const { user } = useAuth();
@@ -25,44 +33,61 @@ export default function ModeratorDashboard() {
   const [pending, setPending] = React.useState(null);
   const [password, setPassword] = React.useState("");
 
-  const [activeTab, setActiveTab] = React.useState("reports");
-
-  const load = React.useCallback(async () => {
-    if (!user?.id) return;
-    setLoading(true);
-    let mounted = true;
-    try {
-      const [d, r, p] = await Promise.all([
-        api.get(`/moderation/dashboard?moderator_id=${user.id}`),
-        api.get(`/moderation/reports?moderator_id=${user.id}`),
-        api.get(`/moderation/new-profiles?moderator_id=${user.id}&days=7`),
-      ]);
-      if (!mounted) return;
-      setDashboard(d.data ?? null);
-      setReports(Array.isArray(r.data) ? r.data : []);
-      setNewProfiles(Array.isArray(p.data) ? p.data : []);
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Erro ao carregar dados de moderação.", duration: 3000 });
-    } finally {
-      if (mounted) setLoading(false);
-    }
-    return () => {
-      mounted = false;
-    };
-  }, [user?.id, toast]);
+  const [activeTab, setActiveTab] = React.useState("add-film");
 
   React.useEffect(() => {
-    if (user?.role === "moderator") {
+    let mounted = true;
+
+    async function load() {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+
+      try {
+        if (FEATURE_MODERATION) {
+          // quando existir backend de moderação, reative os fetches abaixo
+          // const [d, r, p] = await Promise.all([
+          //   api.get(`/moderation/dashboard?moderator_id=${user.id}`),
+          //   api.get(`/moderation/reports?moderator_id=${user.id}`),
+          //   api.get(`/moderation/new-profiles?moderator_id=${user.id}&days=7`),
+          // ]);
+          // if (!mounted) return;
+          // setDashboard(d.data ?? null);
+          // setReports(Array.isArray(r.data) ? r.data : []);
+          // setNewProfiles(Array.isArray(p.data) ? p.data : []);
+        } else {
+          // placeholders amigáveis para não quebrar UI
+          if (!mounted) return;
+          setDashboard({ films_count: 0, pending_reports: 0, new_profiles: 0 });
+          setReports([]);
+          setNewProfiles([]);
+        }
+      } catch (e) {
+        console.error(e);
+        toast({ title: "Erro ao carregar dados de moderação.", duration: 3000 });
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    if (user?.role === "moderator" || user?.role === "admin") {
       load();
     } else {
       setLoading(false);
     }
-  }, [user?.role, load]);
+
+    return () => { mounted = false; };
+  }, [user?.id, user?.role, toast]);
 
   const ask = (type, data = {}) => {
     if (type === "add_film") {
       setActiveTab("add-film");
+      return;
+    }
+    if (!FEATURE_MODERATION) {
+      toast({ title: "Módulo de moderação em breve.", duration: 2500 });
       return;
     }
     setPending({ type, data });
@@ -71,29 +96,18 @@ export default function ModeratorDashboard() {
   };
 
   const confirm = async () => {
-    if (password !== "1357") {
+    if (password !== MOD_PASSWORD) {
       toast({ title: "Senha incorreta. Use: 1357", duration: 2500 });
       return;
     }
     try {
-      if (pending?.type === "resolve_report") {
-        await api.post(
-          `/moderation/reports/${pending.data.reportId}/resolve?moderator_id=${user.id}`,
-          { action: pending.data.action, password }
-        );
-        await load();
-        toast({ title: "Denúncia resolvida!", duration: 2000 });
-      } else if (pending?.type === "mark_supporter") {
-        await api.post(`/moderation/mark-supporter?moderator_id=${user.id}`, {
-          user_id: pending.data.userId,
-          action_type: "mark_supporter",
-          password,
-        });
-        await load();
-        toast({ title: "Usuário marcado como apoiador!", duration: 2000 });
-      } else {
-        toast({ title: "Ação desconhecida.", duration: 2500 });
+      if (!FEATURE_MODERATION) {
+        toast({ title: "Módulo de moderação em breve.", duration: 2500 });
+        return;
       }
+      // quando o backend existir, reative os posts abaixo
+      // if (pending?.type === "resolve_report") { ... }
+      // else if (pending?.type === "mark_supporter") { ... }
     } catch (e) {
       console.error(e);
       toast({ title: "Erro ao executar ação.", duration: 3000 });
@@ -103,14 +117,13 @@ export default function ModeratorDashboard() {
     }
   };
 
-  if (!user || user.role !== "moderator") {
+  if (!user || (user.role !== "moderator" && user.role !== "admin")) {
     return (
       <div className="min-h-dvh bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center">
         <Card className="p-8 text-center">
           <CardContent>
             <h1 className="text-2xl font-bold text-red-800 mb-4">Acesso Negado</h1>
             <p className="text-red-600">Apenas moderadores podem acessar este dashboard.</p>
-            <p className="text-sm text-gray-600 mt-2">Use o email: Moderador@Moderador.com</p>
           </CardContent>
         </Card>
       </div>
@@ -167,153 +180,90 @@ export default function ModeratorDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="reports">Denúncias ({reports.length})</TabsTrigger>
-            <TabsTrigger value="profiles">Novos Perfis</TabsTrigger>
+          <TabsList className="flex flex-wrap">
             <TabsTrigger value="metrics">Métricas de Filmes</TabsTrigger>
             <TabsTrigger value="add-film">Adicionar Filme</TabsTrigger>
+            <TabsTrigger value="genres">Gêneros</TabsTrigger>
+            <TabsTrigger value="tags">Tags</TabsTrigger>
+            <TabsTrigger value="platforms">Plataformas</TabsTrigger>
+            <TabsTrigger value="people">Pessoas</TabsTrigger>
+            <TabsTrigger value="links">Vincular a Filme</TabsTrigger>
+
+            {/* legado/moderação futura */}
+            <TabsTrigger value="reports" disabled={!FEATURE_MODERATION}>
+              Denúncias ({reports.length})
+            </TabsTrigger>
+            <TabsTrigger value="profiles" disabled={!FEATURE_MODERATION}>
+              Novos Perfis
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="reports">
+          {/* Métricas */}
+          <TabsContent value="metrics">
             <Card>
               <CardHeader>
-                <CardTitle className="text-blue-800">Gerenciar Denúncias</CardTitle>
+                <CardTitle className="text-blue-800">Métricas de Filmes</CardTitle>
               </CardHeader>
               <CardContent>
-                {reports.length ? (
-                  <div className="space-y-4">
-                    {reports.map((r) => (
-                      <div key={r.id} className="border p-4 rounded-lg">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <Badge variant="outline" className="mb-2">
-                              {r.reason}
-                            </Badge>
-                            <p className="text-sm text-gray-600">Denunciado por: {r.reporter_name}</p>
-                            <p className="text-sm text-gray-500">
-                              {r.created_at ? new Date(r.created_at).toLocaleDateString("pt-BR") : ""}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => ask("resolve_report", { reportId: r.id, action: "dismiss" })}
-                            >
-                              Dispensar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => ask("resolve_report", { reportId: r.id, action: "delete_comment" })}
-                            >
-                              Excluir Comentário
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-red-600"
-                              onClick={() => ask("resolve_report", { reportId: r.id, action: "ban_user" })}
-                            >
-                              Banir Usuário
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="bg-gray-50 p-3 rounded">
-                          <p className="text-sm font-medium">Comentário denunciado:</p>
-                          <p className="text-sm text-gray-700 mt-1">"{r.comment_text}"</p>
-                        </div>
-                        {r.description && (
-                          <div className="mt-2">
-                            <p className="text-sm font-medium">Descrição:</p>
-                            <p className="text-sm text-gray-600">{r.description}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageSquare size={48} className="mx-auto mb-4" aria-hidden="true" />
-                    <p>Nenhuma denúncia pendente</p>
-                  </div>
-                )}
+                <p className="text-sm text-gray-500">Em breve: contagem por ano, últimos adicionados, etc.</p>
               </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Add Film */}
+          <TabsContent value="add-film">
+            <AddFilmForm onSuccess={() => toast({ title: "Filme adicionado!", duration: 2000 })} />
+          </TabsContent>
+
+          {/* Gêneros */}
+          <TabsContent value="genres">
+            <ManageGenresForm />
+          </TabsContent>
+
+          {/* Tags */}
+          <TabsContent value="tags">
+            <ManageTagsForm />
+          </TabsContent>
+
+          {/* Plataformas */}
+          <TabsContent value="platforms">
+            <ManagePlatformsForm />
+          </TabsContent>
+
+          {/* Pessoas */}
+          <TabsContent value="people">
+            <ManagePeopleForm />
+          </TabsContent>
+
+          {/* Vínculos */}
+          <TabsContent value="links">
+            <LinkFilmRelationsForm />
+          </TabsContent>
+
+          {/* Moderation placeholders (mantidos) */}
+          <TabsContent value="reports">
+            <Card>
+              <CardHeader><CardTitle className="text-blue-800">Gerenciar Denúncias</CardTitle></CardHeader>
+              <CardContent><div className="text-sm text-gray-600">Módulo de moderação estará disponível em breve.</div></CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="profiles">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-blue-800">Novos Perfis (7 dias)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {newProfiles.length ? (
-                  <div className="space-y-4">
-                    {newProfiles.map((p) => {
-                      const initial = (p?.name?.[0] ?? "?").toUpperCase();
-                      return (
-                        <div key={p.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-4">
-                            <Avatar>
-                              <AvatarImage src={p.avatar_url} alt={p.name ?? "Usuário"} />
-                              <AvatarFallback>{initial}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <h3 className="font-medium">{p.name ?? "Usuário"}</h3>
-                              <p className="text-sm text-gray-600">{p.email ?? ""}</p>
-                              <p className="text-xs text-gray-500">
-                                Criado em: {p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : ""}
-                              </p>
-                              {p.is_supporter && (
-                                <Badge className="mt-1 bg-yellow-100 text-yellow-800">
-                                  <Star size={12} className="mr-1" aria-hidden="true" />
-                                  Apoiador
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          {!p.is_supporter && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-yellow-600 border-yellow-300"
-                              onClick={() => ask("mark_supporter", { userId: p.id })}
-                            >
-                              <Star size={16} className="mr-1" aria-hidden="true" />
-                              Marcar como Apoiador
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <User size={48} className="mx-auto mb-4" aria-hidden="true" />
-                    <p>Nenhum perfil novo</p>
-                  </div>
-                )}
-              </CardContent>
+              <CardHeader><CardTitle className="text-blue-800">Novos Perfis (7 dias)</CardTitle></CardHeader>
+              <CardContent><div className="text-sm text-gray-600">Módulo de moderação estará disponível em breve.</div></CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="metrics">
-            <p className="text-sm text-gray-500">Métricas aparecem aqui (placeholder).</p>
-          </TabsContent>
-
-          <TabsContent value="add-film">
-            <AddFilmForm onSuccess={() => toast({ title: "Filme adicionado!", duration: 2000 })} />
           </TabsContent>
         </Tabs>
 
-        {/* Dialog de confirmação para ações moderadas */}
+        {/* Dialog (mantido para o futuro) */}
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Confirmar Ação</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p>Digite a senha de moderador (1357):</p>
+              <p>Digite a senha de moderador ({MOD_PASSWORD}):</p>
               <Input
                 type="password"
                 maxLength={4}

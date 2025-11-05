@@ -10,7 +10,7 @@ import { useToast } from "../hooks/use-toast";
 export default function FilmsPage() {
   const { toast } = useToast();
   const [films, setFilms] = React.useState([]);
-  const [genres, setGenres] = React.useState([]);
+  const [genres, setGenres] = React.useState([]); 
   const [loading, setLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
@@ -25,10 +25,29 @@ export default function FilmsPage() {
     let mounted = true;
     (async () => {
       try {
-        const [f, g] = await Promise.all([api.get("/films"), api.get("/films/genres")]);
+        // Se seu back for paginado, pode usar { params: { page: 1, pageSize: 500 } }
+        const r = await api.get("/films");
         if (!mounted) return;
-        setFilms(Array.isArray(f.data) ? f.data : []);
-        setGenres(Array.isArray(g.data) ? g.data : []);
+
+        const data = r?.data ?? [];
+        const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+
+        setFilms(items);
+
+        // Derivar gêneros no cliente a partir de film.genres (array de strings)
+        const freq = new Map();
+        for (const f of items) {
+          const gs = Array.isArray(f?.genres) ? f.genres : [];
+          for (const g of gs) {
+            const key = String(g || "").trim();
+            if (!key) continue;
+            freq.set(key, (freq.get(key) || 0) + 1);
+          }
+        }
+        const list = [...freq.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([genre, count]) => ({ genre, count }));
+        setGenres(list);
       } catch (e) {
         console.error(e);
         toast({ title: "Erro ao carregar filmografia.", duration: 3000 });
@@ -41,27 +60,24 @@ export default function FilmsPage() {
     };
   }, [toast]);
 
-  const fetchByGenre = async (genre) => {
-    try {
-      const r = genre
-        ? await api.get(`/films/by-genre/${encodeURIComponent(genre)}`)
-        : await api.get("/films");
-      setFilms(Array.isArray(r.data) ? r.data : []);
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Erro ao filtrar por gênero.", duration: 3000 });
-    }
-  };
-
   const handleGenre = (g) => {
     setSelectedGenre(g);
     setSearchTerm("");
-    fetchByGenre(g);
   };
 
+  // filtro local por texto + gênero
   const filtered = React.useMemo(() => {
-    if (!debounced) return films;
-    return films.filter((f) => {
+    let base = films;
+
+    if (selectedGenre) {
+      base = base.filter((f) =>
+        Array.isArray(f?.genres) ? f.genres.includes(selectedGenre) : false
+      );
+    }
+
+    if (!debounced) return base;
+
+    return base.filter((f) => {
       const title = (f?.title || "").toLowerCase();
       const tags = Array.isArray(f?.tags) ? f.tags : [];
       const genresArr = Array.isArray(f?.genres) ? f.genres : [];
@@ -72,7 +88,7 @@ export default function FilmsPage() {
       ];
       return haystack.some((s) => s.includes(debounced));
     });
-  }, [films, debounced]);
+  }, [films, debounced, selectedGenre]);
 
   if (loading) {
     return (
@@ -104,7 +120,7 @@ export default function FilmsPage() {
               />
             </div>
 
-            {/* Filtro por gênero */}
+            {/* Filtro por gênero (derivado no cliente) */}
             <div className="flex items-center gap-4">
               <label htmlFor="genre-select" className="text-sm font-medium text-green-800">
                 Filtrar por gênero:
@@ -152,7 +168,9 @@ export default function FilmsPage() {
           <div className="text-center py-12">
             <Film size={64} className="mx-auto text-green-600 mb-4" aria-hidden="true" />
             <p className="text-green-700 text-lg">
-              {debounced ? `Nenhum filme encontrado para "${searchTerm.trim()}"` : "Nenhum filme encontrado"}
+              {debounced
+                ? `Nenhum filme encontrado para "${searchTerm.trim()}"`
+                : "Nenhum filme encontrado"}
             </p>
           </div>
         )}

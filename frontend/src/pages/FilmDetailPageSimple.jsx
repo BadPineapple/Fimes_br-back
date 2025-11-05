@@ -1,6 +1,8 @@
+// frontend/src/pages/FilmDetailPageSimple.jsx
 import React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import api from "../services/api";
+import { Button } from "../components/ui/button";
 
 export default function FilmDetailPageSimple() {
   const { id } = useParams();
@@ -9,35 +11,51 @@ export default function FilmDetailPageSimple() {
   const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
-    const loadFilm = async () => {
-      try {
-        console.log("=== DEBUG FILM LOADING ===");
-        console.log("Film ID from URL:", id);
-        console.log("API Base URL:", api.defaults.baseURL);
-        console.log("Full URL:", `${api.defaults.baseURL}/films/${id}`);
-        
-        const response = await api.get(`/films/${id}`);
-        console.log("API Response:", response);
-        console.log("Film data:", response.data);
-        setFilm(response.data);
-      } catch (err) {
-        console.error("=== ERROR DETAILS ===");
-        console.error("Error message:", err.message);
-        console.error("Error response:", err.response);
-        console.error("Error status:", err.response?.status);
-        console.error("Error config:", err.config);
-        setError(`${err.message} - Status: ${err.response?.status || 'N/A'}`);
-      }
-      setLoading(false);
-    };
+    let alive = true;
 
-    if (id) {
-      loadFilm();
-    } else {
-      console.error("No ID provided!");
-      setError("No film ID provided");
+    async function loadFilm() {
+      setLoading(true);
+      setError(null);
+      try {
+        // suporta resposta como objeto direto OU { item } OU { data }
+        const res = await api.get(`/films/${id}`);
+        const payload = res?.data ?? null;
+        const item =
+          payload && typeof payload === "object" && !Array.isArray(payload)
+            ? (payload.item ?? payload)
+            : null;
+
+        if (!alive) return;
+
+        if (!item || !item.id) {
+          setFilm(null);
+          setError("Filme não encontrado.");
+        } else {
+          setFilm(item);
+        }
+      } catch (err) {
+        if (!alive) return;
+        const status = err?.response?.status;
+        if (status === 404) {
+          setFilm(null);
+          setError("Filme não encontrado (404).");
+        } else {
+          setError(`Falha ao carregar filme. ${status ? `Status: ${status}` : ""}`);
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    if (id) loadFilm();
+    else {
+      setError("ID do filme ausente.");
       setLoading(false);
     }
+
+    return () => {
+      alive = false;
+    };
   }, [id]);
 
   if (loading) {
@@ -45,37 +63,87 @@ export default function FilmDetailPageSimple() {
   }
 
   if (error) {
-    return <div className="p-8 text-red-600">Erro: {error}</div>;
+    return (
+      <div className="p-8">
+        <p className="text-red-600 mb-4">{error}</p>
+        <Link to="/films"><Button>Voltar aos filmes</Button></Link>
+      </div>
+    );
   }
 
   if (!film) {
-    return <div className="p-8">Filme não encontrado</div>;
+    return (
+      <div className="p-8">
+        <p>Filme não encontrado.</p>
+        <Link to="/films"><Button>Voltar aos filmes</Button></Link>
+      </div>
+    );
   }
 
+  // campos do backend atual (com fallbacks):
+  const title = film.title ?? "Sem título";
+  const year = film.year ?? null;
+  const synopsis = film.synopsis ?? film.description ?? ""; // aceita description se vier
+  const cover = film.coverUrl ?? film.cover_url ?? null;
+
+  // listas opcionais (se um dia existir no payload)
+  const tags = Array.isArray(film.tags) ? film.tags : [];
+  const actors = Array.isArray(film.actors) ? film.actors : [];
+  const genres = Array.isArray(film.genres) ? film.genres : [];
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-4">{film.title}</h1>
-      <p className="mb-2"><strong>Ano:</strong> {film.year}</p>
-      <p className="mb-2"><strong>Diretor:</strong> {film.director}</p>
-      <p className="mb-4"><strong>Descrição:</strong> {film.description}</p>
-      <div className="mb-4">
-        <strong>Gêneros:</strong>
-        <div className="flex gap-2 mt-2">
-          {(film.tags || []).map((tag, i) => (
-            <span key={i} className="bg-blue-100 px-3 py-1 rounded">{tag}</span>
-          ))}
+    <div className="p-8 max-w-4xl mx-auto">
+      <div className="flex gap-6">
+        {cover ? (
+          <img
+            src={cover}
+            alt={`Capa de ${title}`}
+            className="w-48 h-72 object-cover rounded shadow"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-48 h-72 bg-gray-200 rounded grid place-content-center text-gray-500">
+            Sem capa
+          </div>
+        )}
+
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold mb-2">
+            {title} {year ? <span className="text-gray-500">({year})</span> : null}
+          </h1>
+
+          {synopsis && (
+            <p className="text-gray-800 mb-4 whitespace-pre-wrap">{synopsis}</p>
+          )}
+
+          {!!genres.length && (
+            <div className="mb-3">
+              <strong>Gêneros:</strong>{" "}
+              <span className="text-gray-700">{genres.join(", ")}</span>
+            </div>
+          )}
+
+          {!!tags.length && (
+            <div className="mb-3">
+              <strong>Tags:</strong>{" "}
+              <span className="text-gray-700">{tags.join(", ")}</span>
+            </div>
+          )}
+
+          {!!actors.length && (
+            <div className="mb-3">
+              <strong>Elenco:</strong>
+              <ul className="list-disc ml-6 mt-1">
+                {actors.map((a, i) => <li key={i}>{a}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-6">
+            <Link to="/films"><Button>Voltar aos filmes</Button></Link>
+          </div>
         </div>
       </div>
-      {film.actors && film.actors.length > 0 && (
-        <div className="mb-4">
-          <strong>Elenco:</strong>
-          <ul className="list-disc ml-6 mt-2">
-            {film.actors.map((actor, i) => (
-              <li key={i}>{actor}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

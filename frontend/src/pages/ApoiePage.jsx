@@ -4,18 +4,17 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Film, Star } from "lucide-react";
 
-const APOIASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_APOIASE_URL) ||
-  "https://apoia.se/filmesbr";
+function safeUrl(u, fallback) {
+  try { return new URL(u).href; } catch { return fallback; }
+}
+const APOIASE_URL = safeUrl(import.meta.env.VITE_APOIASE_URL, "https://apoia.se/filmesbr");
 
 export default function ApoiePage() {
   return (
     <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-green-800 mb-4">
-            Apoie o Cinema Brasileiro
-          </h1>
+          <h1 className="text-4xl font-bold text-green-800 mb-4">Apoie o Cinema Brasileiro</h1>
           <p className="text-xl text-green-700 mb-6">
             Juntos, fortalecemos nossa indústria cinematográfica nacional
           </p>
@@ -46,20 +45,11 @@ export default function ApoiePage() {
                 Por que Apoiar?
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent>
               <ul className="space-y-3">
-                <li className="flex gap-2">
-                  <span className="text-green-600" aria-hidden="true">✓</span>
-                  <span>Manter a plataforma gratuita</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-green-600" aria-hidden="true">✓</span>
-                  <span>Expandir o banco de dados</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-green-600" aria-hidden="true">✓</span>
-                  <span>Desenvolver novas funcionalidades</span>
-                </li>
+                <li className="flex gap-2"><span className="text-green-600" aria-hidden="true">✓</span><span>Manter a plataforma gratuita</span></li>
+                <li className="flex gap-2"><span className="text-green-600" aria-hidden="true">✓</span><span>Expandir o banco de dados</span></li>
+                <li className="flex gap-2"><span className="text-green-600" aria-hidden="true">✓</span><span>Desenvolver novas funcionalidades</span></li>
               </ul>
             </CardContent>
           </Card>
@@ -71,16 +61,13 @@ export default function ApoiePage() {
             <p className="text-lg mb-6 opacity-90">
               Sua contribuição mantém viva a memória do nosso cinema.
             </p>
-            <Button
-              size="lg"
-              className="bg-white text-green-700 hover:bg-gray-100 font-bold px-8"
-              asChild
-            >
+            <Button size="lg" className="bg-white text-green-700 hover:bg-gray-100 font-bold px-8" asChild>
               <a
                 href={APOIASE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Apoiar o projeto no Apoia.se (abre em nova aba)"
+                title="Apoiar no Apoia.se"
               >
                 <Star className="mr-2" size={20} aria-hidden="true" />
                 Apoiar no Apoia.se

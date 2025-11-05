@@ -1,6 +1,5 @@
 // frontend/src/pages/ProfilePage.jsx
 import React from "react";
-import api from "../services/api";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
@@ -8,119 +7,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
-import { Badge } from "../components/ui/badge";
-import { Film, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const { toast } = useToast();
   const { id: profileUserId } = useParams();
 
-  const [profileUser, setProfileUser] = React.useState(null);
-  const [isOwnProfile, setIsOwnProfile] = React.useState(false);
-  const [userRatings, setUserRatings] = React.useState([]);
-  const [favoriteFilms, setFavoriteFilms] = React.useState([]);
-  const [topRatedFilms, setTopRatedFilms] = React.useState([]);
-  const [selectedList, setSelectedList] = React.useState("favorites");
-  const [listFilms, setListFilms] = React.useState([]);
+  // No backend atual, só conseguimos garantir dados do próprio usuário (AuthContext)
+  const isOwnProfile = !profileUserId || profileUserId === String(user?.id);
+
   const [isEditing, setIsEditing] = React.useState(false);
-  const [editData, setEditData] = React.useState({ name: "", description: "", is_private: false });
+  const [editData, setEditData] = React.useState({
+    name: user?.name ?? "",
+    description: user?.description ?? "",
+    is_private: !!user?.is_private,
+  });
 
   React.useEffect(() => {
-    let mounted = true;
-    const targetId = profileUserId || user?.id || null;
-    const isOwn = !!(user && (!profileUserId || profileUserId === user.id));
-    setIsOwnProfile(isOwn);
-    if (!targetId) return;
+    // sincroniza quando o user do contexto mudar (ex.: login)
+    setEditData({
+      name: user?.name ?? "",
+      description: user?.description ?? "",
+      is_private: !!user?.is_private,
+    });
+  }, [user?.name, user?.description, user?.is_private]);
 
-    (async () => {
-      try {
-        if (isOwn) {
-          if (!mounted) return;
-          setProfileUser(user);
-          setEditData({
-            name: user?.name ?? "",
-            description: user?.description ?? "",
-            is_private: !!user?.is_private,
-          });
-        } else {
-          const r = await api.get(`/auth/me?user_id=${targetId}`);
-          if (!mounted) return;
-          setProfileUser(r.data);
-        }
+  if (loading) {
+    return (
+      <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <Card className="p-8 text-center">Carregando perfil…</Card>
+        </div>
+      </div>
+    );
+  }
 
-        const viewerId = user ? user.id : null;
-        const [rRatings, rFav] = await Promise.all([
-          api.get(`/users/${targetId}/ratings`),
-          isOwn ? api.get(`/users/${targetId}/film-lists/favorites?viewer_id=${viewerId}`) : Promise.resolve({ data: [] }),
-        ]);
-
-        if (!mounted) return;
-
-        const ratingsData = Array.isArray(rRatings.data) ? rRatings.data : [];
-        setUserRatings(ratingsData);
-
-        if (isOwn) {
-          const fav = Array.isArray(rFav.data) ? rFav.data : [];
-          setFavoriteFilms(fav.slice(0, 5));
-
-          const top = [...ratingsData]
-            .sort((a, b) => (b.rating - a.rating) || (new Date(b.created_at) - new Date(a.created_at)))
-            .slice(0, 5);
-          setTopRatedFilms(top);
-        }
-      } catch (e) {
-        console.error(e);
-        toast({ title: "Erro ao carregar perfil.", duration: 3000 });
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [user, profileUserId, toast]);
-
-  React.useEffect(() => {
-    if (isOwnProfile) fetchListFilms(selectedList);
-  }, [selectedList, isOwnProfile, user?.id, profileUserId]);
-
-  const fetchListFilms = async (type) => {
-    if (!isOwnProfile || !user) return;
-    const targetId = profileUserId || user.id;
-    try {
-      const r = await api.get(`/users/${targetId}/film-lists/${type}?viewer_id=${user.id}`);
-      setListFilms(Array.isArray(r.data) ? r.data : []);
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Erro ao carregar lista.", duration: 3000 });
-    }
-  };
-
-  const handleSave = async () => {
-    if (!user) return;
-    const payload = {
-      name: (editData.name || "").trim(),
-      description: (editData.description || "").trim(),
-      is_private: !!editData.is_private,
-    };
-    if (!payload.name) {
-      toast({ title: "Nome não pode ficar vazio.", duration: 2500 });
-      return;
-    }
-    try {
-      await api.put(`/users/${user.id}`, payload);
-      setProfileUser((prev) => (prev ? { ...prev, ...payload } : prev));
-      setIsEditing(false);
-      toast({ title: "Perfil atualizado!", duration: 2000 });
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Erro ao salvar perfil.", duration: 3000 });
-    }
-  };
-
-  const currentUser = profileUser || user;
-  if (!currentUser) {
+  if (!user && !profileUserId) {
     return (
       <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 py-8">
         <div className="max-w-4xl mx-auto px-4">
@@ -130,7 +54,7 @@ export default function ProfilePage() {
               <CardDescription>Faça login para acessar seu perfil</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600">Use o botão Entrar no topo.</p>
+              <p className="text-sm text-gray-600">Use o botão “Entrar” no topo.</p>
             </CardContent>
           </Card>
         </div>
@@ -138,7 +62,36 @@ export default function ProfilePage() {
     );
   }
 
+  if (!isOwnProfile) {
+    // Sem endpoints públicos de usuário no back atual, mostramos aviso simples
+    return (
+      <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <Card className="text-center p-8">
+            <CardHeader>
+              <CardTitle className="text-green-800">Perfil público</CardTitle>
+              <CardDescription>Visualização de perfis públicos estará disponível em breve.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/films">
+                <Button>Voltar aos Filmes</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const currentUser = user;
   const initial = (currentUser?.name?.[0] ?? "?").toUpperCase();
+
+  const handleSave = async () => {
+    // No back atual não temos rota de atualização de usuário.
+    // Mantemos o UI e avisamos.
+    toast({ title: "Edição de perfil estará disponível em breve.", duration: 2500 });
+    setIsEditing(false);
+  };
 
   return (
     <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 py-8">
@@ -147,7 +100,8 @@ export default function ProfilePage() {
           <CardHeader>
             <div className="flex items-center gap-4">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={currentUser.avatar_url} alt={currentUser.name ?? "Usuário"} />
+                {/* backend atual usa avatar_url (snake_case) */}
+                <AvatarImage src={currentUser?.avatar_url || currentUser?.avatarUrl || ""} alt={currentUser?.name ?? "Usuário"} />
                 <AvatarFallback className="text-2xl bg-green-100 text-green-800">{initial}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
@@ -179,41 +133,56 @@ export default function ProfilePage() {
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
-                      <CardTitle className="text-2xl text-green-800">{currentUser.name ?? "Usuário"}</CardTitle>
-                      {currentUser.is_supporter && (
+                      <CardTitle className="text-2xl text-green-800">
+                        {currentUser?.name ?? "Usuário"}
+                      </CardTitle>
+                      {(currentUser?.is_supporter || currentUser?.isSupporter) && (
                         <Star className="text-yellow-500 fill-yellow-500" size={24} title="Apoiador" aria-hidden="true" />
                       )}
-                      {currentUser.is_private && <span className="text-xs bg-gray-200 px-2 py-1 rounded">Privado</span>}
+                      {(currentUser?.is_private || currentUser?.isPrivate) && (
+                        <span className="text-xs bg-gray-200 px-2 py-1 rounded">Privado</span>
+                      )}
                     </div>
                     <CardDescription className="text-base mt-2">
-                      {currentUser.description || "Amante do cinema brasileiro"}
+                      {currentUser?.description || "Amante do cinema brasileiro"}
                     </CardDescription>
                   </>
                 )}
               </div>
               <div className="space-x-2">
-                {isOwnProfile &&
-                  (isEditing ? (
-                    <>
-                      <Button size="sm" onClick={handleSave}>
-                        Salvar
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
-                        Cancelar
-                      </Button>
-                    </>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                      Editar Perfil
-                    </Button>
-                  ))}
+                {isEditing ? (
+                  <>
+                    <Button size="sm" onClick={handleSave}>Salvar</Button>
+                    <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>Editar Perfil</Button>
+                )}
               </div>
             </div>
           </CardHeader>
         </Card>
 
-        {/* TODO: Renderizar favoritos, topRatedFilms, listFilms, e userRatings aqui,
-            reaproveitando seus componentes/estilos. */}
+        {/* Seções dependentes de API futura (listas, avaliações) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-green-800">Suas listas</CardTitle>
+            <CardDescription>Favoritos, Assistidos, Quero ver — em breve.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600">Assim que ativarmos as rotas no backend, essas seções aparecerão aqui.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-green-800">Suas avaliações</CardTitle>
+            <CardDescription>Avaliar filmes estará disponível em breve.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600">Em construção.</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

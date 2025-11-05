@@ -9,12 +9,64 @@ import { Sparkles, User } from "lucide-react";
 import LoginDialog from "../components/LoginDialog";
 import { useToast } from "../hooks/use-toast";
 
+function tokenize(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/\p{Diacritic}+/gu, "")
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean);
+}
+
+function scoreFilm(film, queryTokens) {
+  // Campos considerados
+  const title = film.title || "";
+  const synopsis = film.synopsis || film.description || "";
+  const tags = Array.isArray(film.tags) ? film.tags.join(" ") : "";
+  const genres = Array.isArray(film.genres) ? film.genres.join(" ") : "";
+
+  const hay = tokenize(`${title} ${synopsis} ${tags} ${genres}`);
+
+  // peso simples: match no título vale 3, nas demais áreas vale 1
+  let score = 0;
+  const titleTokens = tokenize(title);
+  for (const q of queryTokens) {
+    if (titleTokens.includes(q)) score += 3;
+    if (hay.includes(q)) score += 1;
+  }
+
+  // bônus leve para filmes mais novos (se tiver year)
+  if (Number.isFinite(film.year)) {
+    const yr = Number(film.year);
+    if (yr >= 2015) score += 0.5;
+    if (yr >= 2020) score += 0.5;
+  }
+
+  return score;
+}
+
 export default function EncontrarPage() {
   const { toast } = useToast();
   const [description, setDescription] = React.useState("");
   const [recs, setRecs] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
+  const [allFilms, setAllFilms] = React.useState([]);
   const { user } = useAuth();
+
+  // carrega o catálogo uma vez
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await api.get("/films"); // aceita array ou { items }
+        const data = r?.data ?? [];
+        const items = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+        if (alive) setAllFilms(items);
+      } catch (e) {
+        console.warn("Falha ao carregar filmes para recomendações locais:", e);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const getRecs = async () => {
     if (!user) {
@@ -34,19 +86,31 @@ export default function EncontrarPage() {
 
     setLoading(true);
     try {
-      const r = await api.post("/ai/recommend", { description: desc });
-      const data = r?.data ?? {};
-      const list = Array.isArray(data.recommendations) ? data.recommendations : [];
-      setRecs({
-        recommendations: list,
-        explanation: typeof data.explanation === "string" ? data.explanation : "",
-      });
-      if (!list.length) {
+      // === Recomendador local (sem backend /ai) ===
+      const qTokens = tokenize(desc);
+      const scored = allFilms
+        .map((f) => ({ film: f, score: scoreFilm(f, qTokens) }))
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+
+      const recommendations = scored.map((x) =>
+        x.film.title ? `${x.film.title}${x.film.year ? ` (${x.film.year})` : ""}` : "Filme"
+      );
+
+      const explanation =
+        recommendations.length
+          ? "Selecionamos títulos que combinam com as palavras-chave da sua descrição (título, sinopse, tags e gêneros), com leve peso para lançamentos recentes."
+          : "";
+
+      setRecs({ recommendations, explanation });
+
+      if (!recommendations.length) {
         toast({ title: "Nenhuma recomendação encontrada para essa descrição.", duration: 3000 });
       }
     } catch (e) {
       console.error(e);
-      toast({ title: "Erro ao buscar recomendações.", duration: 3000 });
+      toast({ title: "Erro ao gerar recomendações.", duration: 3000 });
     } finally {
       setLoading(false);
     }
@@ -57,7 +121,7 @@ export default function EncontrarPage() {
       <div className="max-w-4xl mx-auto px-4">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-green-800 mb-4">Encontrar Filmes Brasileiros</h1>
-          <p className="text-green-700 text-lg">Descreva o que quer assistir e a IA recomenda.</p>
+          <p className="text-green-700 text-lg">Descreva o que quer assistir e receba recomendações.</p>
         </div>
 
         <Card className="mb-8">
