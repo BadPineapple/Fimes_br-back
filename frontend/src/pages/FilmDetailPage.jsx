@@ -6,140 +6,50 @@ import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Textarea } from "../components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
-import { Film, Star, MessageSquare } from "lucide-react";
+import { Badge } from "../components/ui/badge";
+import { Film as FilmIcon, Star, MessageSquare } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 
 const s = (v) => String(v);
 
-// Flags de recursos ainda não implementados no backend novo
-const FEATURE_RATINGS = false; // /films/:id/ratings, /ratings/average
-const FEATURE_LISTS = false;   // /users/:id/film-lists/*
-const FEATURE_REPORTS = false; // /comments/report
+// flags (funcionalidades ainda sem backend)
+const FEATURE_LISTS = false;
 
 export default function FilmDetailPage() {
-  const { id } = useParams();
+  const { id } = useParams(); // pode ser id ou slug
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [film, setFilm] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
-  // Estados “futuros” (desativados por enquanto)
-  const [ratings, setRatings] = React.useState([]);
-  const [avg, setAvg] = React.useState({ average: 0, count: 0 });
-  const [userRating, setUserRating] = React.useState({ rating: 0, comment: "" });
-  const [savingRating, setSavingRating] = React.useState(false);
-  const [lists, setLists] = React.useState({ favorites: false, watched: false, to_watch: false });
+  // estado local só para UI de estrelas
+  const [myRating, setMyRating] = React.useState(0);
+  const [myComment, setMyComment] = React.useState("");
 
   const load = React.useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
-      // ✅ BACKEND ATUAL: só precisamos disso
       const filmRes = await api.get(`/films/${id}`);
       setFilm(filmRes.data);
-
-      // Os blocos abaixo só rodam quando existir suporte no backend
-      if (FEATURE_RATINGS) {
-        try {
-          const [ratingsRes, avgRes] = await Promise.all([
-            api.get(`/films/${id}/ratings`),
-            api.get(`/films/${id}/ratings/average`),
-          ]);
-          const rData = Array.isArray(ratingsRes.data) ? ratingsRes.data : [];
-          const aData = avgRes?.data ?? { average: 0, count: 0 };
-          setRatings(rData);
-          setAvg(aData);
-
-          if (user?.id) {
-            const mine = rData.find((x) => x.user_id === user.id);
-            if (mine) setUserRating({ rating: mine.rating ?? 0, comment: mine.comment ?? "" });
-          } else {
-            setUserRating({ rating: 0, comment: "" });
-          }
-        } catch {
-          setRatings([]);
-          setAvg({ average: 0, count: 0 });
-        }
-      }
-
-      if (FEATURE_LISTS && user?.id) {
-        try {
-          const [fav, wat, tw] = await Promise.all([
-            api.get(`/users/${user.id}/film-lists/favorites?viewer_id=${user.id}`),
-            api.get(`/users/${user.id}/film-lists/watched?viewer_id=${user.id}`),
-            api.get(`/users/${user.id}/film-lists/to_watch?viewer_id=${user.id}`),
-          ]);
-          setLists({
-            favorites: Array.isArray(fav.data) && fav.data.some((f) => s(f.id) === s(id)),
-            watched:   Array.isArray(wat.data) && wat.data.some((f) => s(f.id) === s(id)),
-            to_watch:  Array.isArray(tw.data) && tw.data.some((f) => s(f.id) === s(id)),
-          });
-        } catch {
-          setLists({ favorites: false, watched: false, to_watch: false });
-        }
-      }
     } catch (e) {
-      console.error("Erro ao carregar filme:", e);
+      console.error(e);
       toast({ title: "Erro ao carregar filme.", duration: 3000 });
       setFilm(null);
     } finally {
       setLoading(false);
     }
-  }, [id, user?.id, toast]);
+  }, [id, toast]);
 
   React.useEffect(() => {
     load();
   }, [load]);
 
-  const submitRating = async () => {
-    if (!FEATURE_RATINGS) {
-      toast({ title: "Avaliações ainda não disponíveis.", duration: 2500 });
-      return;
-    }
-    if (!user) {
-      toast({ title: "Faça login para avaliar.", duration: 2500 });
-      return;
-    }
-    const n = Number(userRating.rating);
-    if (!Number.isFinite(n) || n < 1 || n > 5) {
-      toast({ title: "Selecione uma nota de 1 a 5.", duration: 2500 });
-      return;
-    }
-    setSavingRating(true);
-    try {
-      await api.post(`/films/${id}/ratings`, { rating: n, comment: userRating.comment?.trim() ?? "" });
-      toast({ title: "Avaliação salva!", duration: 2000 });
-      await load();
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Erro ao enviar avaliação.", duration: 3000 });
-    } finally {
-      setSavingRating(false);
-    }
-  };
-
-  const report = async () => {
-    if (!FEATURE_REPORTS) {
-      toast({ title: "Denúncias ainda não disponíveis.", duration: 2500 });
-      return;
-    }
-  };
-
-  const toggle = async () => {
-    if (!FEATURE_LISTS) {
-      toast({ title: "Listas pessoais ainda não disponíveis.", duration: 2500 });
-      return;
-    }
-  };
-
   if (loading) {
     return (
-      <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-2xl text-green-800">Carregando filme...</div>
-        </div>
+      <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50 flex items-center justify-center">
+        <div className="text-2xl text-green-800">Carregando filme...</div>
       </div>
     );
   }
@@ -150,7 +60,7 @@ export default function FilmDetailPage() {
         <div className="max-w-4xl mx-auto px-4 py-8">
           <Card className="text-center p-8">
             <CardContent>
-              <Film size={64} className="mx-auto mb-4 text-green-600" aria-hidden="true" />
+              <FilmIcon size={64} className="mx-auto mb-4 text-green-600" />
               <h2 className="text-2xl font-bold text-green-800 mb-2">Filme não encontrado</h2>
               <p className="text-green-700 mb-4">O filme não existe ou foi removido.</p>
               <Link to="/films">
@@ -163,128 +73,166 @@ export default function FilmDetailPage() {
     );
   }
 
-  // Render principal
+  // normaliza estruturas vindas do backend
+  const genres = Array.isArray(film.genres) ? film.genres.map((g) => g.genre || g).filter(Boolean) : [];
+  const tags = Array.isArray(film.tags) ? film.tags.map((t) => t.tag || t).filter(Boolean) : [];
+  const chips = [...genres, ...tags];
+
+  const watch = Array.isArray(film.whereToWatch) ? film.whereToWatch : [];
+  const platforms = watch.map((w) => ({ ...w, platform: w.platform || {} }));
+
   return (
     <div className="min-h-dvh bg-gradient-to-br from-green-50 to-yellow-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Cabeçalho simples */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-green-800">
-            {film.title} {film.year ? `(${film.year})` : ""}
-          </h1>
-          {film.synopsis && <p className="mt-2 text-green-900/80">{film.synopsis}</p>}
+      <div className="max-w-6xl mx-auto px-4 py-10">
+        {/* linha superior com chips */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {chips.length
+            ? chips.map((c) => (
+                <Badge key={c.id ?? c.name} variant="secondary" className="rounded-full">
+                  {c.name}
+                </Badge>
+              ))
+            : null}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Sua Avaliação — escondida até o backend suportar */}
-          {FEATURE_RATINGS && user && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-green-800">Sua Avaliação</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Nota (1–5):</label>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <Star
-                        key={n}
-                        size={24}
-                        className={`cursor-pointer ${
-                          n <= userRating.rating ? "text-yellow-400 fill-yellow-400" : "text-gray-300 hover:text-yellow-300"
-                        }`}
-                        onClick={() => setUserRating((prev) => ({ ...prev, rating: n }))}
-                        aria-label={`Definir nota ${n}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <Textarea
-                  rows={3}
-                  value={userRating.comment}
-                  onChange={(e) => setUserRating((prev) => ({ ...prev, comment: e.target.value }))}
-                  placeholder="O que você achou?"
-                  maxLength={800}
-                />
-                <Button
-                  className="w-full bg-green-600 hover:bg-green-700"
-                  disabled={userRating.rating === 0 || savingRating}
-                  onClick={submitRating}
-                >
-                  {savingRating ? "Salvando..." : "Salvar Avaliação"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+        {/* grade principal: pôster à esquerda, conteúdo à direita */}
+        <div className="grid grid-cols-1 md:grid-cols-[380px,1fr] gap-8">
+          {/* pôster / placeholder */}
+          <div className="rounded-xl overflow-hidden">
+            {film.coverUrl ? (
+              <img
+                src={film.coverUrl}
+                alt={`Capa de ${film.title}`}
+                className="w-full h-[360px] md:h-[420px] object-cover rounded-xl shadow-sm"
+              />
+            ) : (
+              <div className="w-full h-[360px] md:h-[420px] rounded-xl shadow-sm bg-gradient-to-br from-green-100 to-yellow-100 flex items-center justify-center">
+                <FilmIcon size={96} className="text-green-500" />
+              </div>
+            )}
+          </div>
 
-          {/* Avaliações da Comunidade — escondido enquanto não houver endpoint */}
-          {FEATURE_RATINGS ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-green-800">
-                  Avaliações da Comunidade ({ratings.length}) • média {avg.average?.toFixed?.(1) ?? "0.0"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {ratings.length ? (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {ratings.map((r) => (
-                      <div key={r.id} className="border-b pb-4 last:border-0">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={r.user_avatar} alt={r.user_name ?? "Usuário"} />
-                              <AvatarFallback>{(r.user_name?.[0] ?? "?").toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium">{r.user_name ?? "Usuário"}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="flex">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  size={14}
-                                  className={i < (r.rating ?? 0) ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}
-                                  aria-hidden="true"
-                                />
-                              ))}
-                            </div>
-                            {FEATURE_REPORTS && user && user.id !== r.user_id && (
-                              <button
-                                onClick={() => report(r.id)}
-                                className="text-gray-400 hover:text-red-500 text-xs"
-                                title="Denunciar comentário"
-                                aria-label="Denunciar comentário"
-                              >
-                                ⚠️
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {r.comment && <p className="text-gray-700 text-sm">{r.comment}</p>}
-                      </div>
-                    ))}
-                  </div>
+          {/* infos à direita */}
+          <div>
+            <h1 className="text-3xl font-bold text-green-900">
+              {film.title} {film.year ? `(${film.year})` : ""}
+            </h1>
+
+            {/* sinopse */}
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-green-900">Sinopse</h2>
+              <p className="mt-2 text-green-900/90 leading-relaxed">
+                {film.synopsis || "Sem sinopse disponível."}
+              </p>
+            </div>
+
+            {/* minhas listas (apenas UI, ainda desabilitada) */}
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-green-900">Minhas Listas</h2>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Button variant="outline" disabled={!FEATURE_LISTS}>
+                  ❤️ Favoritar
+                </Button>
+                <Button variant="outline" disabled={!FEATURE_LISTS}>
+                  👁️ Marcar como Assistido
+                </Button>
+                <Button variant="outline" disabled={!FEATURE_LISTS}>
+                  ⏰ Quero Assistir
+                </Button>
+                {!FEATURE_LISTS && <span className="text-xs text-gray-500">Em breve.</span>}
+              </div>
+            </div>
+
+            {/* onde assistir */}
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-green-900">Onde Assistir</h2>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {platforms.length ? (
+                  platforms.map((w, i) => (
+                    <a
+                      key={`${w.platformId}-${w.type}-${i}`}
+                      href={w.url || w.platform?.website || "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Button variant="outline" className="rounded-full">
+                        {w.platform?.name || "Plataforma"}
+                      </Button>
+                    </a>
+                  ))
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageSquare size={48} className="mx-auto mb-4" aria-hidden="true" />
-                    <p>Ainda não há avaliações.</p>
-                  </div>
+                  <>
+                    {/* pílulas exemplo para lembrar o layout */}
+                    <Button variant="outline" className="rounded-full" disabled>
+                      Netflix
+                    </Button>
+                    <Button variant="outline" className="rounded-full" disabled>
+                      Globoplay
+                    </Button>
+                  </>
                 )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-green-800">Avaliações</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-gray-600">
-                  Esse recurso estará disponível em breve.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* linha inferior: sua avaliação (esquerda) / avaliações da comunidade (direita) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
+          {/* sua avaliação — exibida mesmo sem backend (só não persiste) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-green-800">Sua Avaliação</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm text-green-900/80 mb-2">Nota (1–5 estrelas):</p>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star
+                      key={n}
+                      size={24}
+                      className={`cursor-pointer ${
+                        n <= myRating ? "text-yellow-400 fill-yellow-400" : "text-gray-300 hover:text-yellow-300"
+                      }`}
+                      onClick={() => setMyRating(n)}
+                      aria-label={`Definir nota ${n}`}
+                    />
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+
+              <div>
+                <p className="text-sm text-green-900/80 mb-2">Comentário (opcional):</p>
+                <Textarea
+                  rows={4}
+                  value={myComment}
+                  onChange={(e) => setMyComment(e.target.value)}
+                  placeholder="O que você achou do filme?"
+                />
+              </div>
+
+              <Button
+                className="w-full bg-green-600 hover:bg-green-700"
+                onClick={() => toast({ title: "Avaliações em breve.", duration: 2000 })}
+              >
+                Salvar Avaliação
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* avaliações da comunidade — estado vazio como na referência */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-green-800">Avaliações da Comunidade (0)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center text-gray-500 py-10">
+                <MessageSquare size={48} className="mx-auto mb-4" />
+                <p>Ainda não há avaliações para este filme</p>
+                <p className="text-xs mt-1">Seja o primeiro a avaliar!</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

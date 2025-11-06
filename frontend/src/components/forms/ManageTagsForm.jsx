@@ -10,15 +10,21 @@ export default function ManageTagsForm() {
   const { toast } = useToast();
   const [items, setItems] = React.useState([]);
   const [name, setName] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const normalizeItems = (data) =>
+    Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
 
   const load = React.useCallback(async () => {
     try {
-      // GET /tags
-      const res = await api.get("/tags");
-      setItems(res.data ?? []);
+      setLoading(true);
+      const res = await api.get("/tags"); // backend: { items: [...] }
+      setItems(normalizeItems(res.data));
     } catch (e) {
       console.error(e);
       toast({ title: "Erro ao carregar tags", duration: 2500 });
+    } finally {
+      setLoading(false);
     }
   }, [toast]);
 
@@ -28,26 +34,35 @@ export default function ManageTagsForm() {
     const n = name.trim();
     if (!n) return;
     try {
-      // POST /tags { name }
       await api.post("/tags", { name: n });
       setName("");
-      load();
+      await load();
       toast({ title: "Tag adicionada", duration: 1500 });
     } catch (e) {
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) {
+        toast({ title: "Precisa ser moderador para adicionar.", duration: 2500 });
+      } else {
+        toast({ title: "Erro ao adicionar", duration: 2500 });
+      }
       console.error(e);
-      toast({ title: "Erro ao adicionar", duration: 2500 });
     }
   };
 
   const remove = async (id) => {
+    if (!id) return;
     try {
-      // DELETE /tags/:id
       await api.delete(`/tags/${id}`);
-      load();
+      await load();
       toast({ title: "Removida", duration: 1200 });
     } catch (e) {
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) {
+        toast({ title: "Precisa ser moderador para remover.", duration: 2500 });
+      } else {
+        toast({ title: "Erro ao remover", duration: 2500 });
+      }
       console.error(e);
-      toast({ title: "Erro ao remover", duration: 2500 });
     }
   };
 
@@ -56,16 +71,27 @@ export default function ManageTagsForm() {
       <CardHeader><CardTitle>Tags</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da tag" />
-          <Button onClick={add}>Adicionar</Button>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nome da tag"
+            onKeyDown={(e) => e.key === "Enter" && add()}
+          />
+          <Button onClick={add} disabled={!name.trim() || loading}>Adicionar</Button>
         </div>
+
         <div className="flex flex-wrap gap-2">
-          {items.map(t => (
-            <Badge key={t.id} className="cursor-pointer" onClick={() => remove(t.id)} title="Clique para remover">
+          {items.map((t) => (
+            <Badge
+              key={t.id}
+              className="cursor-pointer"
+              onClick={() => remove(t.id)}
+              title="Clique para remover"
+            >
               {t.name}
             </Badge>
           ))}
-          {items.length === 0 && <p className="text-sm text-gray-500">Nenhuma tag cadastrada.</p>}
+          {!items.length && <p className="text-sm text-gray-500">Nenhuma tag cadastrada.</p>}
         </div>
       </CardContent>
     </Card>
