@@ -6,6 +6,7 @@ import { genreRoutes } from "./modules/genres/genres.routes.js";
 import { tagRoutes } from "./modules/tags/tag.routes.js";
 import { peopleRoutes } from "./modules/people/people.routes.js";
 import { platformRoutes } from "./modules/platforms/platforms.routes.js";
+import { ratingsRoutes } from "./modules/ratings/ratings.routes.js";
 
 
 import 'dotenv/config';
@@ -22,6 +23,7 @@ app.register(genreRoutes);
 app.register(tagRoutes);
 app.register(peopleRoutes);
 app.register(platformRoutes);
+app.register(ratingsRoutes);
 
 app.listen({ port: env.port, host: '0.0.0.0' })
   .then(() => {

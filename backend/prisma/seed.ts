@@ -1,162 +1,284 @@
-// prisma/seed.ts
-import { PrismaClient } from '@prisma/client';
-
+/* prisma/seed.ts */
+import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
-async function upsertUser(email: string, data: {
-  name?: string | null;
-  role?: 'user' | 'moderator' | 'admin';
-  avatarUrl?: string | null;
-  isSupporter?: boolean;
-  isPrivate?: boolean;
-  description?: string | null;
-}) {
-  return prisma.user.upsert({
-    where: { email },
-    update: {
-      name: data.name ?? undefined,
-      role: (data.role as any) ?? undefined,
-      avatarUrl: data.avatarUrl ?? undefined,
-      isSupporter: data.isSupporter ?? undefined,
-      isPrivate: data.isPrivate ?? undefined,
-      description: data.description ?? undefined,
-    },
-    create: {
-      email,
-      name: data.name ?? null,
-      role: (data.role as any) ?? 'user',
-      avatarUrl: data.avatarUrl ?? null,
-      isSupporter: data.isSupporter ?? false,
-      isPrivate: data.isPrivate ?? false,
-      description: data.description ?? null,
-    },
-  });
+/** remove acentos, espaços, etc. */
+function slugify(str: string) {
+  return (str ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-async function ensureFilm(data: {
-  title: string;
-  year?: number;
-  synopsis?: string;
-  coverUrl?: string;
-}) {
-  // Como não há unique para filmes, evitamos duplicar procurando por title+year
-  const existing = await prisma.film.findFirst({
-    where: {
-      title: data.title,
-      year: data.year ?? null,
-    },
-  });
-  if (existing) return existing;
-  return prisma.film.create({ data });
+async function uniqueSlug(base: string) {
+  let slug = base || "item";
+  let i = 1;
+  while (await prisma.film.findFirst({ where: { slug } })) {
+    slug = `${base}-${i++}`;
+  }
+  return slug;
 }
 
 async function main() {
-  // --- Usuários ---
-  const moderator = await upsertUser('moderador@filmes.br', {
-    name: 'Moderador',
-    role: 'moderator',
-    avatarUrl: null,
-    description: 'Curadoria e moderação.',
-  });
+  // ---------- LIMPA TABELAS (ordem importa!)
+  await prisma.filmAvailability.deleteMany({});
+  await prisma.filmPerson.deleteMany({});
+  await prisma.filmTag.deleteMany({});
+  await prisma.filmGenre.deleteMany({});
+  await prisma.rating.deleteMany({});
+  await prisma.film.deleteMany({});
+  await prisma.genre.deleteMany({});
+  await prisma.tag.deleteMany({});
+  await prisma.person.deleteMany({});
+  await prisma.streamingPlatform.deleteMany({});
 
-  const ana = await upsertUser('ana@filmes.br', {
-    name: 'Ana Souza',
-    role: 'user',
-    description: 'Apaixonada por cinema nacional.',
-  });
+  // ---------- BASES
+  const genresSeed = [
+    "Drama",
+    "Crime",
+    "Ação",
+    "Suspense",
+    "Aventura",
+    "Ficção Científica",
+  ];
+  const tagsSeed = [
+    "Clássico",
+    "Premiado",
+    "Independente",
+    "Nordeste",
+    "Favela",
+    "Estrada",
+  ];
 
-  const carlos = await upsertUser('carlos@filmes.br', {
-    name: 'Carlos Lima',
-    role: 'user',
-  });
+  const peopleSeed = [
+    { name: "Fernando Meirelles" },
+    { name: "Kátia Lund" },
+    { name: "Alexandre Rodrigues" },
+    { name: "Leandro Firmino" },
+    { name: "Kleber Mendonça Filho" },
+    { name: "Juliano Dornelles" },
+    { name: "Sônia Braga" },
+    { name: "Udo Kier" },
+    { name: "Walter Salles" },
+    { name: "Fernanda Montenegro" },
+    { name: "Vinícius de Oliveira" },
+  ];
 
-  console.log('Users:', { moderator: moderator.email, ana: ana.email, carlos: carlos.email });
+  const platformsSeed = [
+    { name: "Globoplay", website: "https://globoplay.globo.com/" },
+    { name: "Netflix", website: "https://www.netflix.com/" },
+    { name: "Prime Video", website: "https://www.primevideo.com/" },
+  ];
 
-  // --- Filmes (10) ---
-  const films = [
+  // ---------- INSERT GÊNEROS
+  const genreMap: Record<string, string> = {};
+  for (const name of genresSeed) {
+    const g = await prisma.genre.create({
+      data: { name, slug: slugify(name) },
+      select: { id: true, name: true },
+    });
+    genreMap[g.name] = g.id;
+  }
+
+  // ---------- INSERT TAGS
+  const tagMap: Record<string, string> = {};
+  for (const name of tagsSeed) {
+    const t = await prisma.tag.create({
+      data: { name, slug: slugify(name) },
+      select: { id: true, name: true },
+    });
+    tagMap[t.name] = t.id;
+  }
+
+  // ---------- INSERT PESSOAS
+  const personMap: Record<string, string> = {};
+  for (const p of peopleSeed) {
+    const created = await prisma.person.create({
+      data: { name: p.name, slug: slugify(p.name) },
+      select: { id: true, name: true },
+    });
+    personMap[created.name] = created.id;
+  }
+
+  // ---------- INSERT PLATAFORMAS
+  const platformMap: Record<string, string> = {};
+  for (const p of platformsSeed) {
+    const created = await prisma.streamingPlatform.create({
+      data: { name: p.name, slug: slugify(p.name), website: p.website },
+      select: { id: true, name: true },
+    });
+    platformMap[created.name] = created.id;
+  }
+
+  // ---------- FILMES (dados de exemplo)
+  type FilmSeed = {
+    title: string;
+    originalTitle?: string;
+    year?: number;
+    runtimeMin?: number;
+    synopsis?: string;
+    coverUrl?: string;
+    genres?: string[];
+    tags?: string[];
+    directors?: string[]; // nomes das pessoas
+    cast?: Array<{ name: string; characterName?: string; billingOrder?: number }>;
+    availability?: Array<{ platform: string; type: "SUBSCRIPTION" | "RENT" | "BUY" | "FREE"; region?: string; url?: string }>;
+  };
+
+  const filmsSeed: FilmSeed[] = [
     {
-      title: 'Cidade de Deus',
+      title: "Cidade de Deus",
       year: 2002,
+      runtimeMin: 130,
       synopsis:
-        'Dois jovens crescem na favela Cidade de Deus, no Rio de Janeiro, trilhando caminhos opostos entre fotografia e crime.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/k7eYdWvhYQyRQoU2TB2A2Xu2TfD.jpg',
+        "Na violenta favela carioca, Buscapé cresce entre o crime e tenta se tornar fotógrafo, enquanto Zé Pequeno ascende no tráfico.",
+      genres: ["Crime", "Drama", "Ação"],
+      tags: ["Clássico", "Favela", "Premiado"],
+      directors: ["Fernando Meirelles", "Kátia Lund"],
+      cast: [
+        { name: "Alexandre Rodrigues", characterName: "Buscapé", billingOrder: 1 },
+        { name: "Leandro Firmino", characterName: "Zé Pequeno", billingOrder: 2 },
+      ],
+      availability: [
+        { platform: "Globoplay", type: "SUBSCRIPTION", region: "BR" },
+        { platform: "Prime Video", type: "RENT", region: "BR" },
+      ],
+      coverUrl: "https://image.tmdb.org/t/p/w780/k7eYdWvhYQyRQoU2TB2A2Xu2TfD.jpg",
     },
     {
-      title: 'Central do Brasil',
-      year: 1998,
-      synopsis:
-        'Uma ex-professora ajuda um menino a encontrar o pai no interior do Nordeste após a morte da mãe.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/5TvzHmxsqsYqS9rSLw2wGZ9rW1A.jpg',
-    },
-    {
-      title: 'Tropa de Elite',
-      year: 2007,
-      synopsis:
-        'O cotidiano do BOPE no Rio de Janeiro e o dilema de um capitão prestes a se aposentar.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/qhZqX8G6HC8K3opgDdGztqKqRRm.jpg',
-    },
-    {
-      title: 'Bacurau',
+      title: "Bacurau",
       year: 2019,
+      runtimeMin: 131,
       synopsis:
-        'Após a morte de Dona Carmelita, moradores de um vilarejo no sertão percebem algo estranho acontecendo.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/9n2tJBplPzg5cZbgr8HUR2E0A0v.jpg',
+        "Após a morte de Dona Carmelita, moradores de Bacurau descobrem que sua comunidade foi apagada do mapa e passa a ser caçada.",
+      genres: ["Suspense", "Aventura", "Drama"],
+      tags: ["Independente", "Nordeste", "Premiado"],
+      directors: ["Kleber Mendonça Filho", "Juliano Dornelles"],
+      cast: [
+        { name: "Sônia Braga", characterName: "Domingas", billingOrder: 1 },
+        { name: "Udo Kier", characterName: "Michael", billingOrder: 2 },
+      ],
+      availability: [
+        { platform: "Globoplay", type: "SUBSCRIPTION", region: "BR" },
+        { platform: "Prime Video", type: "BUY", region: "BR" },
+      ],
+      coverUrl: "https://image.tmdb.org/t/p/w780/wvC4jG3EjjXNMT1UM3GqXWfY5qY.jpg",
     },
     {
-      title: 'Que Horas Ela Volta?',
-      year: 2015,
+      title: "Central do Brasil",
+      year: 1998,
+      runtimeMin: 110,
       synopsis:
-        'A chegada da filha da empregada doméstica abala as relações de classe numa casa de São Paulo.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/9m7QbK0rGZWlznImPi0tLxe3LjF.jpg',
-    },
-    {
-      title: 'O Auto da Compadecida',
-      year: 2000,
-      synopsis:
-        'As aventuras de João Grilo e Chicó no sertão nordestino, humor e crítica social.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/8QXGNP0Vb4nsYKub59XpAhiUSQN.jpg',
-    },
-    {
-      title: 'Aquarius',
-      year: 2016,
-      synopsis:
-        'Clara resiste à pressão de uma construtora que quer demolir o prédio onde vive.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/6mVfZq5CV2wAPOQgpdnH3UX77Dp.jpg',
-    },
-    {
-      title: 'Carandiru',
-      year: 2003,
-      synopsis:
-        'A vida no complexo penitenciário de São Paulo às vésperas do massacre de 1992.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/8n3eQZxYQY7m0B6K8ZZrVSu2CeG.jpg',
-    },
-    {
-      title: 'Hoje Eu Quero Voltar Sozinho',
-      year: 2014,
-      synopsis:
-        'Leo, um adolescente cego, descobre sentimentos ao conhecer o novo colega de classe.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/6GCUCJn4n1Z2N1DbStO2Qe6hwMR.jpg',
-    },
-    {
-      title: 'Linha de Passe',
-      year: 2008,
-      synopsis:
-        'Quatro irmãos na periferia de São Paulo lutam por sobrevivência e sonhos.',
-      coverUrl: 'https://image.tmdb.org/t/p/w500/1gNn0x2m2kq3Bv9v9jQwXWm3Lyz.jpg',
+        "Dora e o menino Josué viajam pelo interior do Nordeste em busca do pai do garoto, criando laços de afeto ao longo do caminho.",
+      genres: ["Drama", "Aventura"],
+      tags: ["Estrada", "Clássico"],
+      directors: ["Walter Salles"],
+      cast: [
+        { name: "Fernanda Montenegro", characterName: "Dora", billingOrder: 1 },
+        { name: "Vinícius de Oliveira", characterName: "Josué", billingOrder: 2 },
+      ],
+      availability: [
+        { platform: "Netflix", type: "SUBSCRIPTION", region: "BR" },
+      ],
+      coverUrl: "https://image.tmdb.org/t/p/w780/1NE2x6Qlm5A3hneMuquMNFc13JU.jpg",
     },
   ];
 
-  for (const f of films) {
-    await ensureFilm(f);
+  // ---------- CRIA FILMES E RELAÇÕES
+  for (const f of filmsSeed) {
+    const base = slugify(`${f.title}-${f.year ?? ""}`.trim()) || slugify(f.title);
+    const slug = await uniqueSlug(base);
+
+    const film = await prisma.film.create({
+      data: {
+        title: f.title,
+        originalTitle: f.originalTitle ?? null,
+        year: f.year ?? null,
+        runtimeMin: f.runtimeMin ?? null,
+        synopsis: f.synopsis ?? null,
+        coverUrl: f.coverUrl ?? null,
+        slug,
+      },
+      select: { id: true, title: true },
+    });
+
+    // gêneros
+    for (const gName of f.genres ?? []) {
+      const genreId = genreMap[gName];
+      if (genreId) {
+        await prisma.filmGenre.upsert({
+          where: { filmId_genreId: { filmId: film.id, genreId } },
+          update: {},
+          create: { filmId: film.id, genreId },
+        });
+      }
+    }
+
+    // tags
+    for (const tName of f.tags ?? []) {
+      const tagId = tagMap[tName];
+      if (tagId) {
+        await prisma.filmTag.upsert({
+          where: { filmId_tagId: { filmId: film.id, tagId } },
+          update: {},
+          create: { filmId: film.id, tagId },
+        });
+      }
+    }
+
+    // direção
+    for (const dName of f.directors ?? []) {
+      const personId = personMap[dName];
+      if (personId) {
+        await prisma.filmPerson.upsert({
+          where: { filmId_personId_role: { filmId: film.id, personId, role: "DIRECTOR" as any } },
+          update: {},
+          create: { filmId: film.id, personId, role: "DIRECTOR" as any },
+        });
+      }
+    }
+
+    // elenco
+    for (const c of f.cast ?? []) {
+      const personId = personMap[c.name];
+      if (personId) {
+        await prisma.filmPerson.upsert({
+          where: { filmId_personId_role: { filmId: film.id, personId, role: "ACTOR" as any } },
+          update: { characterName: c.characterName ?? null, billingOrder: c.billingOrder ?? null },
+          create: {
+            filmId: film.id,
+            personId,
+            role: "ACTOR" as any,
+            characterName: c.characterName ?? null,
+            billingOrder: c.billingOrder ?? null,
+          },
+        });
+      }
+    }
+
+    // onde assistir
+    for (const a of f.availability ?? []) {
+      const platformId = platformMap[a.platform];
+      if (platformId) {
+        await prisma.filmAvailability.upsert({
+          where: { filmId_platformId_type: { filmId: film.id, platformId, type: a.type as any } },
+          update: { region: a.region ?? null, url: a.url ?? null, lastCheck: new Date() },
+          create: {
+            filmId: film.id,
+            platformId,
+            type: a.type as any, // "SUBSCRIPTION" | "RENT" | "BUY" | "FREE"
+            region: a.region ?? null,
+            url: a.url ?? null,
+            lastCheck: new Date(),
+          },
+        });
+      }
+    }
   }
 
-  const totalFilms = await prisma.film.count();
-  console.log(`Films total: ${totalFilms}`);
-
-  // (Opcional) crie algumas avaliações para testar
-  // await prisma.rating.create({ data: { userId: ana.id, filmId: (await prisma.film.findFirst({ where: { title: 'Cidade de Deus' } }))!.id, score: 5, comment: 'Obra-prima.' } });
-
-  console.log('Seed concluído.');
+  console.log("✅ Seed concluída com sucesso.");
 }
 
 main()
