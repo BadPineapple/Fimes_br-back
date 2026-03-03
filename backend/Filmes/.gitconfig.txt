@@ -1,3 +1,0 @@
-[user]
-	email = renatomontenegrodeoliveira@gmail.com
-	name = BadPineapple

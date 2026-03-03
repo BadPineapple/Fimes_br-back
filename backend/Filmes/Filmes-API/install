@@ -1,9 +1,0 @@
-express	
-mysql2	
-cors	
-jsonwebtoken	
-bcrypt	
-dotenv
-
-npm install express mysql2 cors jsonwebtoken bcrypt dotenv
-npm install multer sharp
