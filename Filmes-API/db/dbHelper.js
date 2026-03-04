@@ -1,4 +1,4 @@
-const db = require('./db');
+const db = require('../db/db');
 
 /**
  * Função Global para Busca, Filtro, Ordenação e Paginação

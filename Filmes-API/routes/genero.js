@@ -1,6 +1,6 @@
 const express = require('express');
-const db = require('./db'); // Conexão com o pool do MySQL
-const verificarAcesso = require('./auth');
+const db = require('../db/db'); // Conexão com o pool do MySQL
+const verificarAcesso = require('../auth');
 
 const router = express.Router();
 

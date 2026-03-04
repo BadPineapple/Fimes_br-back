@@ -25,14 +25,16 @@ const verificarAcesso = (rolesPermitidas = []) => {
             // 3. Verificação de Autorização (RBAC)
             // Se a lista de roles permitidas estiver vazia, qualquer utilizador logado entra
             if (rolesPermitidas.length > 0) {
-                // No novo sistema, 'roles' é um Array (ex: ['user', 'admin'])
-                const temPermissao = usuarioDecodificado.roles.some(role => 
+                // Previne falhas (crash) se o token for antigo e não tiver 'roles' definidas
+                const userRoles = usuarioDecodificado.roles || [];
+                
+                const temPermissao = userRoles.some(role => 
                     rolesPermitidas.includes(role)
                 );
 
                 if (!temPermissao) {
                     return res.status(403).json({ 
-                        erro: "Proibido: Não tens permissão suficiente para realizar esta ação." 
+                        erro: "Proibido: Não tem permissão suficiente para realizar esta ação." 
                     });
                 }
             }
@@ -40,9 +42,18 @@ const verificarAcesso = (rolesPermitidas = []) => {
             // 4. Se chegou aqui, está tudo OK!
             next();
         } catch (err) {
-            return res.status(403).json({ erro: "Token inválido ou expirado." });
+            // Diferenciar o erro ajuda o frontend a redirecionar para a página de Login corretamente
+            if (err.name === 'TokenExpiredError') {
+                return res.status(401).json({ erro: "A sessão expirou. Por favor, inicie sessão novamente." });
+            }
+            return res.status(403).json({ erro: "Token inválido ou adulterado." });
         }
     };
 };
 
-module.exports = verificarAcesso;
+// Exportamos a função principal e atalhos rápidos para usar nas rotas
+module.exports = {
+    verificarAcesso,
+    somenteAdmin: verificarAcesso(['admin']),
+    autenticado: verificarAcesso() // Qualquer utilizador com sessão iniciada
+};

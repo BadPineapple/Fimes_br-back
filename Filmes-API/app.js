@@ -6,22 +6,26 @@ const cors = require('cors');
 const app = express();
 
 // 2. Importação das Rotas
-const authRoutes       = require('./rotas/login'); // Login e Registro
-const filmeRoutes      = require('./rotas/filme');
-const generoRoutes     = require('./rotas/genero');
-const plataformaRoutes = require('./rotas/plataforma');
-const tagRoutes        = require('./rotas/tag');
-const pessoaRoutes     = require('./rotas/pessoa');
-const imagensRoutes    = require('./rotas/imagens');
+const authRoutes       = require('./routes/loginRoutes'); // Login e Registro
+const filmeRoutes      = require('./routes/filme');
+const generoRoutes     = require('./routes/genero');
+const plataformaRoutes = require('./routes/plataforma');
+const tagRoutes        = require('./routes/tag');
+const pessoaRoutes     = require('./routes/pessoa');
+const imagensRoutes    = require('./routes/imagens');
 
 // 3. Middlewares Globais
-app.use(cors()); // Permite que o seu site (frontend) acesse a API
+app.use(cors({
+    origin: 'http://localhost:8080', // A porta exata do seu frontend Vite
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'] // Essencial para passar o Token JWT e receber ficheiros
+})); 
 app.use(express.json()); // Permite que a API receba dados em formato JSON
 
 // 4. Definição das Rotas (Endpoints)
 
 // Se alguém aceder a http://localhost:3000/uploads/img_123.webp, vai ver a imagem
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+//app.use('/imagens', express.static(path.join(__dirname, 'uploads')));
 
 // Rota de Boas-vindas
 app.get('/', (req, res) => {
