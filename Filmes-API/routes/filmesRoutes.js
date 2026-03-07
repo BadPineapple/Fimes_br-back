@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const filmeController = require('../controllers/filmeController');
+const filmeController = require('../controllers/filmeController.js');
 const { somenteAdmin } = require('../auth'); // Ajustar o caminho do auth.js se necessário
 
 // Buscar todos os filmes

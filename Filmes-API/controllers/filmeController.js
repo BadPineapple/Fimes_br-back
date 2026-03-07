@@ -16,9 +16,55 @@ const extrairDadosBaseFilme = (dados) => {
 const filmeController = {
     listarTodos: async (req, res) => {
         try {
-            const [filmes] = await db.execute('SELECT * FROM TBLFIL');
+            // Recebe os parâmetros de filtro da URL (ex: ?titulo=Ação&genero=2)
+            const { titulo, genero, tag, plataforma, pessoa } = req.query;
+
+            // Base da query usando DISTINCT para evitar filmes duplicados pelos JOINs
+            let query = 'SELECT DISTINCT f.* FROM TBLFIL f ';
+            const queryParams = [];
+            const conditions = [];
+
+            // 1. Adicionar JOINs dinâmicos e condições exatas de ID
+            if (genero) {
+                query += 'INNER JOIN TBLFIL_GEN fg ON f.IDGEN = fg.IDFIL ';
+                conditions.push('fg.IDGEN = ?');
+                queryParams.push(genero);
+            }
+            if (tag) {
+                query += 'INNER JOIN TBLFIL_TAG ft ON f.IDTAG = ft.IDFIL ';
+                conditions.push('ft.IDTAG = ?');
+                queryParams.push(tag);
+            }
+            if (plataforma) {
+                query += 'INNER JOIN TBLFIL_PLA fp ON f.IDPLA = fp.IDFIL ';
+                conditions.push('fp.IDPLA = ?');
+                queryParams.push(plataforma);
+            }
+            if (pessoa) {
+                query += 'INNER JOIN TBLFIL_PES fpes ON f.IDPES = fpes.IDFIL ';
+                conditions.push('fpes.IDPES = ?');
+                queryParams.push(pessoa);
+            }
+
+            // 2. Condição de busca parcial para o Título (LIKE)
+            if (titulo) {
+                conditions.push('f.NOMFIL LIKE ?');
+                queryParams.push(`%${titulo}%`);
+            }
+
+            // 3. Montar a cláusula WHERE final, se houver filtros
+            if (conditions.length > 0) {
+                query += ' WHERE ' + conditions.join(' AND ');
+            }
+
+            // Ordenação padrão para manter a lista organizada
+            query += ' ORDER BY f.NOMFIL ASC';
+
+            const [filmes] = await db.execute(query, queryParams);
+            
             res.json(filmes);
         } catch (error) {
+            console.error("Erro na filtragem de filmes:", error);
             res.status(500).json({ erro: "Erro ao buscar filmes no banco de dados." });
         }
     },
@@ -26,7 +72,7 @@ const filmeController = {
     buscarPorId: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [filmes] = await db.execute('SELECT * FROM TBLFIL WHERE id = ?', [id]);
+            const [filmes] = await db.execute('SELECT * FROM TBLFIL WHERE IDFIL = ?', [id]);
 
             if (filmes.length === 0) {
                 return res.status(404).json({ erro: "Filme não encontrado." });
@@ -55,7 +101,7 @@ const filmeController = {
             const baseFilme = extrairDadosBaseFilme(req.body);
 
             const [resultFilme] = await conexao.execute(
-                `INSERT INTO TBLFIL (titulo, sinopse, imagens, duracao, ano, tmdb_id, nota_externa) 
+                `INSERT INTO TBLFIL (NOMFIL, SINOPSE, IMAGENS, DURACAO, ANO, IMDBID, NOTEXT) 
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.imagens, 
@@ -89,7 +135,7 @@ const filmeController = {
                 if (idsParaInserir.length === 0) return;
 
                 // 3. Insere na tabela de relação (ex: TBLFIL_PES)
-                let query = `INSERT IGNORE INTO ${tabelaRelacao} (filme_id, ${colunaRelacaoId}`;
+                let query = `INSERT IGNORE INTO ${tabelaRelacao} (IDFIL, ${colunaRelacaoId}`;
                 query += papel ? ', papel) VALUES ' : ') VALUES ';
 
                 const values = [];
@@ -106,12 +152,12 @@ const filmeController = {
             };
 
             // Chamadas dinâmicas. Nota: Ajuste os nomes das tabelas (ex: TBLGENERO) e colunas (ex: 'genero' ou 'nome') se forem diferentes no seu MySQL.
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', elenco, 'Elenco');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', diretor, 'Diretor');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', roterista, 'Roterista');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLGENERO', 'genero', 'TBLFIL_GEN', 'genero_id', generos);
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLTAG', 'nome', 'TBLFIL_TAG', 'tag_id', tags);
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPLATAFORMA', 'nome', 'TBLFIL_PLA', 'plataforma_id', plataformas);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', elenco, 'Elenco');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', diretor, 'Diretor');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', roterista, 'Roterista');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLGEN', 'NOMGEN', 'TBLFIL_GEN', 'IDGEN', generos);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLTAG', 'NOMTAG', 'TBLFIL_TAG', 'IDTAG', tags);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPLA', 'NOMPLA', 'TBLFIL_PLA', 'IDPLA', plataformas);
 
             await conexao.commit();
             res.status(201).json({ mensagem: "Filme inserido com sucesso!", id: idFilme });
@@ -143,18 +189,18 @@ const filmeController = {
 
             await conexao.execute(
                 `UPDATE TBLFIL 
-                 SET titulo = ?, sinopse = ?, imagens = ?, duracao = ?, ano = ?, tmdb_id = ?, nota_externa = ? 
-                 WHERE id = ?`,
+                 SET NOMFIL = ?, SINOPSE = ?, IMAGENS = ?, DURACAO = ?, ANO = ?, IMDBID = ?, NOTEXT = ? 
+                 WHERE IDFIL = ?`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.imagens, 
                     baseFilme.duracao, baseFilme.ano, baseFilme.tmdb_id, baseFilme.nota_externa, idFilme
                 ]
             );
 
-            await conexao.execute('DELETE FROM TBLFIL_PES WHERE filme_id = ?', [idFilme]);
-            await conexao.execute('DELETE FROM TBLFIL_GEN WHERE filme_id = ?', [idFilme]);
-            await conexao.execute('DELETE FROM TBLFIL_TAG WHERE filme_id = ?', [idFilme]);
-            await conexao.execute('DELETE FROM TBLFIL_PLA WHERE filme_id = ?', [idFilme]);
+            await conexao.execute('DELETE FROM TBLFIL_PES WHERE IDFIL = ?', [idFilme]);
+            await conexao.execute('DELETE FROM TBLFIL_GEN WHERE IDFIL = ?', [idFilme]);
+            await conexao.execute('DELETE FROM TBLFIL_TAG WHERE IDFIL = ?', [idFilme]);
+            await conexao.execute('DELETE FROM TBLFIL_PLA WHERE IDFIL = ?', [idFilme]);
 
             // Nova função para processar itens mistos (IDs existentes e textos novos)
             const processarRelacaoDinamica = async (conexao, idFilme, tabelaMestre, colunaMestre, tabelaRelacao, colunaRelacaoId, arrayItems, papel = null) => {
@@ -180,7 +226,7 @@ const filmeController = {
                 if (idsParaInserir.length === 0) return;
 
                 // 3. Insere na tabela de relação (ex: TBLFIL_PES)
-                let query = `INSERT IGNORE INTO ${tabelaRelacao} (filme_id, ${colunaRelacaoId}`;
+                let query = `INSERT IGNORE INTO ${tabelaRelacao} (IDFIL, ${colunaRelacaoId}`;
                 query += papel ? ', papel) VALUES ' : ') VALUES ';
 
                 const values = [];
@@ -197,12 +243,12 @@ const filmeController = {
             };
 
             // Chamadas dinâmicas. Nota: Ajuste os nomes das tabelas (ex: TBLGENERO) e colunas (ex: 'genero' ou 'nome') se forem diferentes no seu MySQL.
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', elenco, 'Elenco');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', diretor, 'Diretor');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPESSOA', 'nome', 'TBLFIL_PES', 'pessoa_id', roterista, 'Roterista');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLGENERO', 'genero', 'TBLFIL_GEN', 'genero_id', generos);
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLTAG', 'nome', 'TBLFIL_TAG', 'tag_id', tags);
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPLATAFORMA', 'nome', 'TBLFIL_PLA', 'plataforma_id', plataformas);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', elenco, 'Elenco');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', diretor, 'Diretor');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', roterista, 'Roterista');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLGEN', 'NOMGEN', 'TBLFIL_GEN', 'IDGEN', generos);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLTAG', 'NOMTAG', 'TBLFIL_TAG', 'IDTAG', tags);
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPLA', 'NOMPLA', 'TBLFIL_PLA', 'IDPLA', plataformas);
 
             await conexao.commit();
             res.json({ mensagem: "Filme atualizado com sucesso!", id: idFilme });
@@ -218,7 +264,7 @@ const filmeController = {
         try {
             const id = parseInt(req.params.id);
 
-            const [result] = await db.execute('DELETE FROM TBLFIL WHERE id = ?', [id]);
+            const [result] = await db.execute('DELETE FROM TBLFIL WHERE IDFIL = ?', [id]);
 
             if (result.affectedRows === 0) {
                 return res.status(404).json({ erro: "Filme não encontrado." });

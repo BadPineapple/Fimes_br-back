@@ -3,7 +3,7 @@ const db = require('../db/db'); // Ajustar caminho conforme necessário
 const opcoesController = {
     listarGeneros: async (req, res) => {
         try {
-            const [linhas] = await db.execute('SELECT id, genero FROM TBLGENERO ORDER BY genero ASC');
+            const [linhas] = await db.execute('SELECT id, genero FROM TBLGEN ORDER BY genero ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar géneros." });
@@ -22,7 +22,7 @@ const opcoesController = {
     listarPlataformas: async (req, res) => {
         try {
             // Adicionado o campo 'link' no SELECT
-            const [linhas] = await db.execute('SELECT id, nome, link FROM TBLPLATAFORMA ORDER BY nome ASC');
+            const [linhas] = await db.execute('SELECT id, nome, link FROM TBLPLA ORDER BY nome ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar plataformas." });
@@ -32,7 +32,7 @@ const opcoesController = {
     listarPessoas: async (req, res) => {
         try {
             // Serve para listar diretores, atores e roteiristas na mesma caixa de seleção
-            const [linhas] = await db.execute('SELECT id, nome FROM TBLPESSOA ORDER BY nome ASC');
+            const [linhas] = await db.execute('SELECT id, nome FROM TBLPES ORDER BY nome ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar pessoas." });
@@ -44,7 +44,7 @@ const opcoesController = {
             const { nome } = req.body; // No corpo da requisição enviamos { "nome": "Ação" }
             if (!nome) return res.status(400).json({ erro: "O nome do género é obrigatório." });
 
-            const [result] = await db.execute('INSERT INTO TBLGENERO (genero) VALUES (?)', [nome]);
+            const [result] = await db.execute('INSERT INTO TBLGEN (genero) VALUES (?)', [nome]);
             res.status(201).json({ mensagem: "Género criado com sucesso!", id: result.insertId, nome });
         } catch (error) {
             res.status(500).json({ erro: "Erro ao criar género.", detalhe: error.message });
@@ -70,7 +70,7 @@ const opcoesController = {
 
             // Inserir o nome e o link (permitindo que o link seja nulo caso não seja enviado)
             const [result] = await db.execute(
-                'INSERT INTO TBLPLATAFORMA (nome, link) VALUES (?, ?)', 
+                'INSERT INTO TBLPLA (nome, link) VALUES (?, ?)', 
                 [nome, link || null]
             );
             res.status(201).json({ mensagem: "Plataforma criada com sucesso!", id: result.insertId, nome, link });
@@ -84,7 +84,7 @@ const opcoesController = {
             const { nome } = req.body;
             if (!nome) return res.status(400).json({ erro: "O nome da pessoa é obrigatório." });
 
-            const [result] = await db.execute('INSERT INTO TBLPESSOA (nome) VALUES (?)', [nome]);
+            const [result] = await db.execute('INSERT INTO TBLPES (nome) VALUES (?)', [nome]);
             res.status(201).json({ mensagem: "Pessoa adicionada com sucesso!", id: result.insertId, nome });
         } catch (error) {
             res.status(500).json({ erro: "Erro ao adicionar pessoa.", detalhe: error.message });
@@ -94,7 +94,7 @@ const opcoesController = {
     buscarGeneroPorId: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [linhas] = await db.execute('SELECT id, genero FROM TBLGENERO WHERE id = ?', [id]);
+            const [linhas] = await db.execute('SELECT id, genero FROM TBLGEN WHERE id = ?', [id]);
             
             if (linhas.length === 0) return res.status(404).json({ erro: "Género não encontrado." });
             res.json(linhas[0]);
@@ -118,7 +118,7 @@ const opcoesController = {
     buscarPlataformaPorId: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [linhas] = await db.execute('SELECT id, nome, link FROM TBLPLATAFORMA WHERE id = ?', [id]);
+            const [linhas] = await db.execute('SELECT id, nome, link FROM TBLPLA WHERE id = ?', [id]);
             
             if (linhas.length === 0) return res.status(404).json({ erro: "Plataforma não encontrada." });
             res.json(linhas[0]);
@@ -130,7 +130,7 @@ const opcoesController = {
     buscarPessoaPorId: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [linhas] = await db.execute('SELECT id, nome FROM TBLPESSOA WHERE id = ?', [id]);
+            const [linhas] = await db.execute('SELECT id, nome FROM TBLPES WHERE id = ?', [id]);
             
             if (linhas.length === 0) return res.status(404).json({ erro: "Pessoa não encontrada." });
             res.json(linhas[0]);
@@ -145,7 +145,7 @@ const opcoesController = {
             const { nome } = req.body;
             if (!nome) return res.status(400).json({ erro: "O nome do género é obrigatório." });
 
-            const [result] = await db.execute('UPDATE TBLGENERO SET genero = ? WHERE id = ?', [nome, id]);
+            const [result] = await db.execute('UPDATE TBLGEN SET genero = ? WHERE id = ?', [nome, id]);
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Género não encontrado." });
             
             res.json({ mensagem: "Género atualizado com sucesso!" });
@@ -176,7 +176,7 @@ const opcoesController = {
             if (!nome) return res.status(400).json({ erro: "O nome da plataforma é obrigatório." });
 
             const [result] = await db.execute(
-                'UPDATE TBLPLATAFORMA SET nome = ?, link = ? WHERE id = ?', 
+                'UPDATE TBLPLA SET nome = ?, link = ? WHERE id = ?', 
                 [nome, link || null, id]
             );
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Plataforma não encontrada." });
@@ -193,7 +193,7 @@ const opcoesController = {
             const { nome } = req.body;
             if (!nome) return res.status(400).json({ erro: "O nome da pessoa é obrigatório." });
 
-            const [result] = await db.execute('UPDATE TBLPESSOA SET nome = ? WHERE id = ?', [nome, id]);
+            const [result] = await db.execute('UPDATE TBLPES SET nome = ? WHERE id = ?', [nome, id]);
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Pessoa não encontrada." });
 
             res.json({ mensagem: "Pessoa atualizada com sucesso!" });
@@ -205,7 +205,7 @@ const opcoesController = {
     apagarGenero: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [result] = await db.execute('DELETE FROM TBLGENERO WHERE id = ?', [id]);
+            const [result] = await db.execute('DELETE FROM TBLGEN WHERE id = ?', [id]);
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Género não encontrado." });
             res.json({ mensagem: "Género removido com sucesso!" });
         } catch (error) {
@@ -227,7 +227,7 @@ const opcoesController = {
     apagarPlataforma: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [result] = await db.execute('DELETE FROM TBLPLATAFORMA WHERE id = ?', [id]);
+            const [result] = await db.execute('DELETE FROM TBLPLA WHERE id = ?', [id]);
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Plataforma não encontrada." });
             res.json({ mensagem: "Plataforma removida com sucesso!" });
         } catch (error) {
@@ -238,7 +238,7 @@ const opcoesController = {
     apagarPessoa: async (req, res) => {
         try {
             const id = parseInt(req.params.id);
-            const [result] = await db.execute('DELETE FROM TBLPESSOA WHERE id = ?', [id]);
+            const [result] = await db.execute('DELETE FROM TBLPES WHERE id = ?', [id]);
             if (result.affectedRows === 0) return res.status(404).json({ erro: "Pessoa não encontrada." });
             res.json({ mensagem: "Pessoa removida com sucesso!" });
         } catch (error) {
