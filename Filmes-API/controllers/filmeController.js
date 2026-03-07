@@ -70,17 +70,53 @@ const filmeController = {
     },
 
     buscarPorId: async (req, res) => {
+        const { id } = req.params;
         try {
-            const id = parseInt(req.params.id);
-            const [filmes] = await db.execute('SELECT * FROM TBLFIL WHERE IDFIL = ?', [id]);
+            // 1. Buscar os dados básicos do filme
+            const [filmeRows] = await db.query(
+                "SELECT * FROM tblfil WHERE IDFIL = ?", 
+                [id]
+            );
 
-            if (filmes.length === 0) {
-                return res.status(404).json({ erro: "Filme não encontrado." });
+            if (filmeRows.length === 0) {
+                return res.status(404).json({ message: "Filme não encontrado" });
             }
 
-            res.json(filmes[0]);
+            const filme = filmeRows[0];
+
+            // 2. Buscar Gêneros relacionados
+            const [generos] = await db.query(`
+                SELECT g.IDGEN, g.NOMGEN 
+                FROM tblgen g
+                INNER JOIN tblfil_gen fg ON g.IDGEN = fg.IDGEN
+                WHERE fg.IDFIL = ?`, [id]);
+
+            // 3. Buscar Pessoas relacionadas (Diretores/Atores)
+            const [pessoas] = await db.query(`
+                SELECT p.IDPES, p.NOMPES 
+                FROM tblpes p
+                INNER JOIN tblfil_pes fp ON p.IDPES = fp.IDPES
+                WHERE fp.IDFIL = ?`, [id]);
+
+            // 4. Buscar Plataformas (ajuste se tiver tabela de ligação tblfil_pla)
+            // Se a sua estrutura atual não tiver ligação, esta parte retorna vazio
+            const [plataformas] = await db.query(`
+                SELECT pl.IDPLA, pl.NOMPLA 
+                FROM tblpla pl
+                INNER JOIN tblfil_pla fp ON pl.IDPLA = fp.IDPLA
+                WHERE fp.IDFIL = ?`, [id]);
+
+            // Montar o objeto final
+            const resultado = {
+                ...filme,
+                GENEROS: generos,
+                DIRETORES: pessoas,
+                PLATAFORMAS: plataformas
+            };
+
+            res.json(resultado);
         } catch (error) {
-            res.status(500).json({ erro: "Erro ao buscar filme.", detalhe: error.message });
+            res.status(500).json({ error: error.message });
         }
     },
 

@@ -13,7 +13,7 @@ const opcoesRoutes  = require('./routes/opcoesRoutes'); // Consolida géneros, t
 const listRoutes    = require('./routes/listRoutes'); // Rotas das listas de utilizadores
 //const imagensRoutes = require('./routes/imagens');
 const perfilRoutes  = require('./routes/perfilRoutes');
-
+const ragRoutes  = require('./routes/ragRoutes');
 
 // 3. Middlewares Globais
 app.use(cors({
@@ -42,7 +42,7 @@ app.use('/opcoes',  opcoesRoutes); // Substitui as 4 rotas antigas
 app.use('/listas',  listRoutes);   // Nova funcionalidade de listas
 //app.use('/imagens', imagensRoutes);
 app.use('/perfil',  perfilRoutes);
-
+app.use('/rag',  ragRoutes);
 
 // 5. Tratamento de Erro 404 (Rota não encontrada)
 app.use((req, res) => {
