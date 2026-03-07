@@ -13,12 +13,12 @@ const loginController = {
     listarUsuarios: async (req, res) => {
          try {
         const [usuarios] = await db.execute(`
-            SELECT l.id, p.nome, l.email, l.telefone, p.data_nascimento, p.apoiador, p.aceita_propaganda, GROUP_CONCAT(r.nome_role) as roles
+            SELECT l.id, p.NOMUSER, l.email, l.TEL, p.DTANASC, p.APOIA, p.lead, GROUP_CONCAT(r.NOMROL) as roles
             FROM TBLLOGIN l
-            LEFT JOIN TBLUSER p ON l.id = p.login_id
-            LEFT JOIN TBLLOGROL lr ON l.id = lr.usuario
-            LEFT JOIN TBLROL r ON lr.role = r.id
-            GROUP BY l.id, p.id
+            LEFT JOIN TBLUSER p ON l.IDLOGIN = p.IDLOGIN
+            LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDLOGIN
+            LEFT JOIN TBLROL r ON lr.IDROl = r.IDROL
+            GROUP BY l.IDLOGIN, p.IDUSER
         `);
         res.json(usuarios);
         } catch (error) {
@@ -36,13 +36,13 @@ const loginController = {
             }
 
             const [rows] = await db.execute(`
-                SELECT l.id, p.nome, l.email, l.telefone, l.status, p.data_nascimento, p.descricao, p.apoiador, p.aceita_propaganda, p.foto_perfil, GROUP_CONCAT(r.nome_role) as roles
+                SELECT l.id, p.nome, l.email, l.telefone, l.status, p.data_nascimento, p.descricao, p.apoiador, p.lead, p.foto_perfil, GROUP_CONCAT(r.nome_role) as roles
                 FROM TBLLOGIN l
-                LEFT JOIN TBLUSER p ON l.id = p.login_id
-                LEFT JOIN TBLLOGROL lr ON l.id = lr.usuario
-                LEFT JOIN TBLROL r ON lr.role = r.id
-                WHERE l.id = ?
-                GROUP BY l.id, p.id
+                LEFT JOIN TBLUSER p ON l.IDLOGIN = p.IDLOGIN
+                LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDLOGIN
+                LEFT JOIN TBLROL r ON lr.IDROL = r.IDROL
+                WHERE l.IDLOGIN = ?
+                GROUP BY l.IDLOGIN, p.IDUSER
             `, [id]);
 
             if (rows.length === 0) {
@@ -73,7 +73,7 @@ const loginController = {
             }
 
             // NOVA LÓGICA: Verificar existência de E-mail ou Telefone e checar o Status
-            let queryCheck = 'SELECT id, status FROM TBLLOGIN WHERE email = ?';
+            let queryCheck = 'SELECT IDLOGIN, status FROM TBLLOGIN WHERE email = ?';
             let paramsCheck = [email];
             
             if (telefone) {
@@ -101,14 +101,14 @@ const loginController = {
                     // Reativar conta Desativada
                     loginId = conta.id;
                     await db.execute(
-                        'UPDATE TBLLOGIN SET senha = ?, telefone = ?, token_verificacao = ?, email_verificado = FALSE, status = "A" WHERE id = ?',
+                        'UPDATE TBLLOGIN SET senha = ?, TEL = ?, token_verificacao = ?, EMAILVER = FALSE, STATS = "A" WHERE id = ?',
                         [senhaHash, telefone || null, tokenVerificacao, loginId]
                     );
                 }
             } else {
                 // Criar um novo login do zero
                 const [loginResult] = await db.execute(
-                    'INSERT INTO TBLLOGIN (email, senha, telefone, data, token_verificacao, email_verificado, status) VALUES (?, ?, ?, CURDATE(), ?, FALSE, "A")',
+                    'INSERT INTO TBLLOGIN (email, senha, TEL, DTACRI, token_verificacao, EMAILVER, STATS) VALUES (?, ?, ?, CURDATE(), ?, FALSE, "A")',
                     [email, senhaHash, telefone || null, tokenVerificacao]
                 );
                 loginId = loginResult.insertId;
@@ -116,14 +116,14 @@ const loginController = {
 
             // Inserir ou Atualizar na tabela de Utilizador (Perfil)
             await db.execute(
-                `INSERT INTO TBLUSER (login_id, nome, aceita_propaganda) 
+                `INSERT INTO TBLUSER (IDLOGIN, NOMUSER, lead) 
                  VALUES (?, ?, ?, ?) 
-                 ON DUPLICATE KEY UPDATE nome = VALUES(nome), aceita_propaganda = VALUES(aceita_propaganda)`,
+                 ON DUPLICATE KEY UPDATE NOMUSER = VALUES(NOMUSER), lead = VALUES(lead)`,
                 [loginId, nome, propaganda ? 1 : 0]
             );
 
             // Atribuir Role padrão (ID 2 = user) caso ainda não tenha
-            await db.execute('INSERT IGNORE INTO TBLLOGROL (usuario, role) VALUES (?, ?)', [loginId, 2]);
+            await db.execute('INSERT IGNORE INTO TBLLOG_ROL (usuario, role) VALUES (?, ?)', [loginId, 2]);
 
             // Simulação do envio de e-mail (Substituir por Nodemailer em produção)
             console.log(`Código de verificação para ${email}: ${tokenVerificacao}`);
@@ -141,7 +141,7 @@ const loginController = {
             const { email, codigo } = req.body;
 
             // NOVA LÓGICA: Puxar também o status para validação
-            const [rows] = await db.execute('SELECT id, token_verificacao, status FROM TBLLOGIN WHERE email = ?', [email]);
+            const [rows] = await db.execute('SELECT IDLOGIN, token_verificacao, status FROM TBLLOGIN WHERE email = ?', [email]);
 
             if (rows.length === 0) {
                 return res.status(404).json({ erro: "Conta não encontrada." });
@@ -159,7 +159,7 @@ const loginController = {
             }
 
             // Atualiza a base de dados para confirmar o e-mail
-            await db.execute('UPDATE TBLLOGIN SET email_verificado = TRUE, token_verificacao = NULL WHERE id = ?', [user.id]);
+            await db.execute('UPDATE TBLLOGIN SET EMAILVER = TRUE, token_verificacao = NULL WHERE IDLOGIN = ?', [user.id]);
 
             res.json({ mensagem: "E-mail verificado com sucesso! Já pode iniciar sessão." });
         } catch (error) {
@@ -173,11 +173,11 @@ const loginController = {
             const { email, senha } = req.body;
 
             const [rows] = await db.execute(`
-                SELECT l.*, p.nome, r.nome_role 
+                SELECT l.*, p.NOMUSER, r.NOMROL 
                 FROM TBLLOGIN l
-                LEFT JOIN TBLUSER p ON l.id = p.login_id
-                LEFT JOIN TBLLOGROL lr ON l.id = lr.usuario
-                LEFT JOIN TBLROL r ON lr.role = r.id
+                LEFT JOIN TBLUSER p ON l.IDLOGIN = p.IDLOGIN
+                LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDUSER
+                LEFT JOIN TBLROL r ON lr.IDROL = r.IDROL
                 WHERE l.email = ? AND l.auth_provider = 'local'`, [email]);
 
             // NOVA LÓGICA: Sem conta (redireciona para registrar)
@@ -203,7 +203,7 @@ const loginController = {
             }
 
             // Mantém a lógica original de verificação de e-mail e senha
-            if (!user.email_verificado) {
+            if (!user.EMAILVER) {
                 return res.status(403).json({ 
                     erro: "E-mail não verificado.", 
                     precisaVerificar: true 
@@ -214,7 +214,7 @@ const loginController = {
             const roles = rows.map(r => r.nome_role).filter(role => role !== null);
 
             // Atualiza a data do último acesso
-            await db.execute('UPDATE TBLLOGIN SET ultimo_acesso = NOW() WHERE id = ?', [user.id]);
+            await db.execute('UPDATE TBLLOGIN SET ULTACES = NOW() WHERE IDLOGIN = ?', [user.id]);
 
             const token = jwt.sign(
                 { id: user.id, nome: user.nome, roles: roles }, 
@@ -254,9 +254,9 @@ const loginController = {
             const [rows] = await db.execute(`
                 SELECT l.*, p.nome as nome_perfil, r.nome_role 
                 FROM TBLLOGIN l
-                LEFT JOIN TBLUSER p ON l.id = p.login_id
-                LEFT JOIN TBLLOGROL lr ON l.id = lr.usuario
-                LEFT JOIN TBLROL r ON lr.role = r.id
+                LEFT JOIN TBLUSER p ON l.IDLOGIN = p.IDLOGIN
+                LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDUSER
+                LEFT JOIN TBLROL r ON lr.IDROL = r.IDROL
                 WHERE l.email = ?`, [email]);
 
             // NOVA LÓGICA: Sem conta (redireciona para registrar)
@@ -287,12 +287,12 @@ const loginController = {
 
             // Se passar por todas as verificações e for uma conta local antiga, vinculamos ao Google
             if (user.auth_provider === 'local') {
-                await db.execute('UPDATE TBLLOGIN SET auth_provider = ?, provider_id = ?, email_verificado = TRUE WHERE id = ?', 
+                await db.execute('UPDATE TBLLOGIN SET auth_provider = ?, provider_id = ?, EMAILVER = TRUE WHERE IDLOGIN = ?', 
                 ['google', provider_id, user.id]);
             }
 
             // Atualiza a data do último acesso
-            await db.execute('UPDATE TBLLOGIN SET ultimo_acesso = NOW() WHERE id = ?', [user.id]);
+            await db.execute('UPDATE TBLLOGIN SET ultaces = NOW() WHERE idlogin = ?', [user.id]);
 
             // 4. Gera o nosso JWT e devolve ao frontend
             const nossoToken = jwt.sign(
@@ -325,7 +325,7 @@ const loginController = {
             }
 
             const [resultLogin] = await db.execute(
-                'UPDATE TBLLOGIN SET email = ?, telefone = ? WHERE id = ?',
+                'UPDATE TBLLOGIN SET email = ?, tel = ? WHERE idlogin = ?',
                 [email, telefone, id]
             );
 
@@ -349,7 +349,7 @@ const loginController = {
             }
 
             const [resultUser] = await db.execute(
-                'UPDATE TBLUSER SET nome = ?, descricao = ? WHERE login_id = ?',
+                'UPDATE TBLUSER SET NOMUSER = ?, DESCUSER = ? WHERE IDLOGIN = ?',
                 [nome, descricao || null, id]
             );
 
@@ -367,7 +367,7 @@ const loginController = {
        try {
         const { id } = req.params;
 
-        const [result] = await db.execute('DELETE FROM TBLLOGIN WHERE id = ?', [id]);
+        const [result] = await db.execute('DELETE FROM TBLLOGIN WHERE IDLOGIN = ?', [id]);
 
         if (result.affectedRows === 0) {
             return res.status(404).json({ erro: "Utilizador não encontrado." });
@@ -385,7 +385,7 @@ const loginController = {
 
             // NOVA LÓGICA: Soft Delete. Em vez de apagar fisicamente, mudamos o status para 'D' (Desativado)
             // Assim, mantemos as listas e o histórico salvos, caso ele decida reativar a conta no futuro!
-            const [result] = await db.execute('UPDATE TBLLOGIN SET status = "D" WHERE id = ?', [id]);
+            const [result] = await db.execute('UPDATE TBLLOGIN SET STATS = "D" WHERE IDLOGIN = ?', [id]);
 
             if (result.affectedRows === 0) {
                 return res.status(404).json({ erro: "Conta não encontrada." });

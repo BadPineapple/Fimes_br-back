@@ -26,22 +26,22 @@ const filmeController = {
 
             // 1. Adicionar JOINs dinâmicos e condições exatas de ID
             if (genero) {
-                query += 'INNER JOIN TBLFIL_GEN fg ON f.IDGEN = fg.IDFIL ';
+                query += 'INNER JOIN TBLFIL_GEN fg ON f.IDFIL = fg.IDFIL ';
                 conditions.push('fg.IDGEN = ?');
                 queryParams.push(genero);
             }
             if (tag) {
-                query += 'INNER JOIN TBLFIL_TAG ft ON f.IDTAG = ft.IDFIL ';
+                query += 'INNER JOIN TBLFIL_TAG ft ON f.IDFIL = ft.IDFIL ';
                 conditions.push('ft.IDTAG = ?');
                 queryParams.push(tag);
             }
             if (plataforma) {
-                query += 'INNER JOIN TBLFIL_PLA fp ON f.IDPLA = fp.IDFIL ';
+                query += 'INNER JOIN TBLFIL_PLA fp ON f.IDFIL = fp.IDFIL ';
                 conditions.push('fp.IDPLA = ?');
                 queryParams.push(plataforma);
             }
             if (pessoa) {
-                query += 'INNER JOIN TBLFIL_PES fpes ON f.IDPES = fpes.IDFIL ';
+                query += 'INNER JOIN TBLFIL_PES fpes ON f.IDFIL = fpes.IDFIL ';
                 conditions.push('fpes.IDPES = ?');
                 queryParams.push(pessoa);
             }
@@ -101,7 +101,7 @@ const filmeController = {
             const baseFilme = extrairDadosBaseFilme(req.body);
 
             const [resultFilme] = await conexao.execute(
-                `INSERT INTO TBLFIL (NOMFIL, SINOPSE, IMAGENS, DURACAO, ANO, IMDBID, NOTEXT) 
+                `INSERT INTO TBLFIL (NOMFIL, SINOPSE, IMAGEM, DURACAO, ANO, IMDBID, NOTEXT) 
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.imagens, 
@@ -136,7 +136,7 @@ const filmeController = {
 
                 // 3. Insere na tabela de relação (ex: TBLFIL_PES)
                 let query = `INSERT IGNORE INTO ${tabelaRelacao} (IDFIL, ${colunaRelacaoId}`;
-                query += papel ? ', papel) VALUES ' : ') VALUES ';
+                query += papel ? ', FUNC) VALUES ' : ') VALUES ';
 
                 const values = [];
                 const placeholders = idsParaInserir.map(id => {
@@ -189,7 +189,7 @@ const filmeController = {
 
             await conexao.execute(
                 `UPDATE TBLFIL 
-                 SET NOMFIL = ?, SINOPSE = ?, IMAGENS = ?, DURACAO = ?, ANO = ?, IMDBID = ?, NOTEXT = ? 
+                 SET NOMFIL = ?, SINOPSE = ?, IMAGEM = ?, DURACAO = ?, ANO = ?, IMDBID = ?, NOTEXT = ? 
                  WHERE IDFIL = ?`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.imagens, 

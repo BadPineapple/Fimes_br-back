@@ -3,16 +3,16 @@ const db = require('../db/db'); // Ajustar caminho conforme necessário
 const opcoesController = {
     listarGeneros: async (req, res) => {
         try {
-            const [linhas] = await db.execute('SELECT id, genero FROM TBLGEN ORDER BY genero ASC');
+            const [linhas] = await db.execute('SELECT IDGEN, NOMGEN FROM TBLGEN ORDER BY NOMGEN ASC');
             res.json(linhas);
         } catch (error) {
-            res.status(500).json({ erro: "Erro ao buscar géneros." });
+            res.status(500).json({ erro: "Erro ao buscar generos." });
         }
     },
 
     listarTags: async (req, res) => {
         try {
-            const [linhas] = await db.execute('SELECT id, nome FROM TBLTAG ORDER BY nome ASC');
+            const [linhas] = await db.execute('SELECT IDTAG, NOMTAG FROM TBLTAG ORDER BY NOMTAG ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar tags." });
@@ -22,7 +22,7 @@ const opcoesController = {
     listarPlataformas: async (req, res) => {
         try {
             // Adicionado o campo 'link' no SELECT
-            const [linhas] = await db.execute('SELECT id, nome, link FROM TBLPLA ORDER BY nome ASC');
+            const [linhas] = await db.execute('SELECT IDPLA, NOMPLA, LINK FROM TBLPLA ORDER BY NOMPLA ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar plataformas." });
@@ -32,7 +32,7 @@ const opcoesController = {
     listarPessoas: async (req, res) => {
         try {
             // Serve para listar diretores, atores e roteiristas na mesma caixa de seleção
-            const [linhas] = await db.execute('SELECT id, nome FROM TBLPES ORDER BY nome ASC');
+            const [linhas] = await db.execute('SELECT IDPES, NOMPES FROM TBLPES ORDER BY NOMPES ASC');
             res.json(linhas);
         } catch (error) {
             res.status(500).json({ erro: "Erro ao buscar pessoas." });
