@@ -13,7 +13,7 @@ router.get('/:id', filmeController.buscarPorId);
 router.post('/', somenteAdmin, filmeController.criar);
 
 // Atualizar filme (Apenas Admin)
-router.put('/:id', somenteAdmin, filmeController.atualizar);
+router.put('/:id', filmeController.atualizar);
 
 // Apagar filme (Apenas Admin)
 router.delete('/:id', somenteAdmin, filmeController.apagar);

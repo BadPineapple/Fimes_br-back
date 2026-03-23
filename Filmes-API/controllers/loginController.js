@@ -56,15 +56,15 @@ const loginController = {
         }
     },
 
-    registrar: async (req, res) => {
+   registrar: async (req, res) => {
         try {
             const { nome, email, senha, telefone, propaganda } = req.body;
 
             if (!nome || !email || !senha) {
-                return res.status(400).json({ erro: "Campos obrigatórios: nome, email, senha e data de nascimento." });
+                return res.status(400).json({ erro: "Campos obrigatórios: nome, email e senha." });
             }
 
-            // Validação da Força da Palavra-Passe
+            // Validação da Força da Senha
             const regexSenha = /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
             if (!regexSenha.test(senha)) {
                 return res.status(400).json({ 
@@ -72,12 +72,12 @@ const loginController = {
                 });
             }
 
-            // NOVA LÓGICA: Verificar existência de E-mail ou Telefone e checar o Status
-            let queryCheck = 'SELECT IDLOGIN, status FROM TBLLOGIN WHERE email = ?';
+            // CORRIGIDO: Nomes das colunas do banco (STATS e TEL)
+            let queryCheck = 'SELECT IDLOGIN, STATS FROM TBLLOGIN WHERE email = ?';
             let paramsCheck = [email];
             
             if (telefone) {
-                queryCheck += ' OR telefone = ?';
+                queryCheck += ' OR TEL = ?';
                 paramsCheck.push(telefone);
             }
 
@@ -91,43 +91,39 @@ const loginController = {
             if (contaExistente.length > 0) {
                 const conta = contaExistente[0];
 
-                if (conta.status === 'A') {
+                if (conta.STATS === 'A') {
                     return res.status(400).json({ erro: "E-mail ou telefone já está em uso." });
                 }
-                if (conta.status === 'B') {
+                if (conta.STATS === 'B') {
                     return res.status(403).json({ erro: "Esta conta encontra-se banida do sistema." });
                 }
-                if (conta.status === 'D') {
-                    // Reativar conta Desativada
-                    loginId = conta.id;
+                if (conta.STATS === 'D') {
+                    loginId = conta.IDLOGIN; // CORRIGIDO: conta.IDLOGIN em vez de conta.id
                     await db.execute(
-                        'UPDATE TBLLOGIN SET senha = ?, TEL = ?, token_verificacao = ?, EMAILVER = FALSE, STATS = "A" WHERE id = ?',
+                        'UPDATE TBLLOGIN SET senha = ?, TEL = ?, token_verificacao = ?, EMAILVAL = FALSE, STATS = "A" WHERE IDLOGIN = ?',
                         [senhaHash, telefone || null, tokenVerificacao, loginId]
                     );
                 }
             } else {
-                // Criar um novo login do zero
                 const [loginResult] = await db.execute(
-                    'INSERT INTO TBLLOGIN (email, senha, TEL, DTACRI, token_verificacao, EMAILVER, STATS) VALUES (?, ?, ?, CURDATE(), ?, FALSE, "A")',
+                    'INSERT INTO TBLLOGIN (email, senha, TEL, DTACRI, token_verificacao, EMAILVAL, STATS) VALUES (?, ?, ?, CURDATE(), ?, FALSE, "A")',
                     [email, senhaHash, telefone || null, tokenVerificacao]
                 );
                 loginId = loginResult.insertId;
             }
 
-            // Inserir ou Atualizar na tabela de Utilizador (Perfil)
+            // CORRIGIDO: Quantidade de "VALUES" igual à de parâmetros (3 e 3)
             await db.execute(
                 `INSERT INTO TBLUSER (IDLOGIN, NOMUSER, lead) 
-                 VALUES (?, ?, ?, ?) 
+                 VALUES (?, ?, ?) 
                  ON DUPLICATE KEY UPDATE NOMUSER = VALUES(NOMUSER), lead = VALUES(lead)`,
                 [loginId, nome, propaganda ? 1 : 0]
             );
 
-            // Atribuir Role padrão (ID 2 = user) caso ainda não tenha
-            await db.execute('INSERT IGNORE INTO TBLLOG_ROL (usuario, role) VALUES (?, ?)', [loginId, 2]);
+            // CORRIGIDO: Nomes das colunas da tabela de Roles (IDLOGIN, IDROL)
+            await db.execute('INSERT IGNORE INTO TBLLOG_ROL (IDLOGIN, IDROL) VALUES (?, ?)', [loginId, 2]);
 
-            // Simulação do envio de e-mail (Substituir por Nodemailer em produção)
             console.log(`Código de verificação para ${email}: ${tokenVerificacao}`);
-
             res.status(201).json({ mensagem: "Conta processada com sucesso! Verifique o seu e-mail com o código enviado." });
 
         } catch (error) {
@@ -140,8 +136,8 @@ const loginController = {
         try {
             const { email, codigo } = req.body;
 
-            // NOVA LÓGICA: Puxar também o status para validação
-            const [rows] = await db.execute('SELECT IDLOGIN, token_verificacao, status FROM TBLLOGIN WHERE email = ?', [email]);
+            // CORRIGIDO: Buscar a coluna STATS e IDLOGIN
+            const [rows] = await db.execute('SELECT IDLOGIN, token_verificacao, STATS FROM TBLLOGIN WHERE email = ?', [email]);
 
             if (rows.length === 0) {
                 return res.status(404).json({ erro: "Conta não encontrada." });
@@ -149,8 +145,7 @@ const loginController = {
 
             const user = rows[0];
 
-            // NOVA LÓGICA: Impedir verificação se a conta tiver sido banida no meio do processo
-            if (user.status === 'B') {
+            if (user.STATS === 'B') {
                 return res.status(403).json({ erro: "Operação não permitida: Esta conta encontra-se banida." });
             }
 
@@ -158,8 +153,8 @@ const loginController = {
                 return res.status(400).json({ erro: "Código de verificação inválido." });
             }
 
-            // Atualiza a base de dados para confirmar o e-mail
-            await db.execute('UPDATE TBLLOGIN SET EMAILVER = TRUE, token_verificacao = NULL WHERE IDLOGIN = ?', [user.id]);
+            // CORRIGIDO: WHERE IDLOGIN = ?
+            await db.execute('UPDATE TBLLOGIN SET EMAILVAL = TRUE, token_verificacao = NULL WHERE IDLOGIN = ?', [user.IDLOGIN]);
 
             res.json({ mensagem: "E-mail verificado com sucesso! Já pode iniciar sessão." });
         } catch (error) {
@@ -176,11 +171,11 @@ const loginController = {
                 SELECT l.*, p.NOMUSER, r.NOMROL 
                 FROM TBLLOGIN l
                 LEFT JOIN TBLUSER p ON l.IDLOGIN = p.IDLOGIN
-                LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDUSER
+                LEFT JOIN TBLLOG_ROL lr ON l.IDLOGIN = lr.IDLOGIN 
                 LEFT JOIN TBLROL r ON lr.IDROL = r.IDROL
                 WHERE l.email = ? AND l.auth_provider = 'local'`, [email]);
 
-            // NOVA LÓGICA: Sem conta (redireciona para registrar)
+            // Sem conta (redireciona para registrar)
             if (rows.length === 0) {
                 return res.status(404).json({ 
                     erro: "Conta não encontrada. Redirecionando para o registo...", 
@@ -190,34 +185,42 @@ const loginController = {
 
             const user = rows[0];
 
-            // NOVA LÓGICA: Verificar status Banido ('B') ou Desativado ('D')
-            if (user.status === 'B') {
+            // Verificar status Banido ('B') ou Desativado ('D')
+            if (user.STATS === 'B') {
                 return res.status(403).json({ erro: "Acesso negado: Esta conta encontra-se banida do sistema." });
             }
 
-            if (user.status === 'D') {
+            if (user.STATS === 'D') {
                 return res.status(403).json({ 
                     erro: "Conta desativada. Redirecionando para reativar o registo...", 
                     acao: "registrar" 
                 });
             }
 
-            // Mantém a lógica original de verificação de e-mail e senha
-            if (!user.EMAILVER) {
+            // Verificação de e-mail (caso seja obrigatório)
+            if (!user.EMAILVAL) {
                 return res.status(403).json({ 
                     erro: "E-mail não verificado.", 
                     precisaVerificar: true 
                 });
             }
 
-            const senhaValida = await bcrypt.compare(senha, user.senha);
-            const roles = rows.map(r => r.nome_role).filter(role => role !== null);
+            // CORREÇÃO CRÍTICA: Bloquear se a senha for inválida
+            const senhaValida = await bcrypt.compare(senha, user.SENHA);
+
+            if (!senhaValida) {
+                return res.status(401).json({ erro: "E-mail ou senha incorretos." });
+            }
+
+            // Extrair roles corretamente
+            const roles = rows.map(r => r.NOMROL).filter(role => role !== null);
 
             // Atualiza a data do último acesso
-            await db.execute('UPDATE TBLLOGIN SET ULTACES = NOW() WHERE IDLOGIN = ?', [user.id]);
+            await db.execute('UPDATE TBLLOGIN SET ULTACES = NOW() WHERE IDLOGIN = ?', [user.IDLOGIN]);
 
+            // Formata as roles como Array para que o auth.js funcione perfeitamente
             const token = jwt.sign(
-                { id: user.id, nome: user.nome, roles: roles }, 
+                { id: user.IDLOGIN, nome: user.NOMUSER, roles: roles }, 
                 JWT_SECRET, 
                 { expiresIn: '12h' }
             );
@@ -225,10 +228,11 @@ const loginController = {
             res.json({
                 mensagem: "Login realizado com sucesso!",
                 token: token,
-                usuario: { id: user.id, nome: user.nome, roles: roles }
+                usuario: { id: user.IDLOGIN, nome: user.NOMUSER, roles: roles }
             });
 
         } catch (error) {
+            console.error("Erro no login:", error);
             res.status(500).json({ erro: "Erro interno no servidor." });
         }
     },
@@ -287,7 +291,7 @@ const loginController = {
 
             // Se passar por todas as verificações e for uma conta local antiga, vinculamos ao Google
             if (user.auth_provider === 'local') {
-                await db.execute('UPDATE TBLLOGIN SET auth_provider = ?, provider_id = ?, EMAILVER = TRUE WHERE IDLOGIN = ?', 
+                await db.execute('UPDATE TBLLOGIN SET auth_provider = ?, provider_id = ?, EMAILVAL = TRUE WHERE IDLOGIN = ?', 
                 ['google', provider_id, user.id]);
             }
 

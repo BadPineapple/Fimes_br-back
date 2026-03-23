@@ -1,4 +1,3 @@
-// 1. Configuração de Variáveis de Ambiente (Sempre no topo)
 require('dotenv').config();
 
 const express = require('express');
@@ -6,14 +5,13 @@ const cors = require('cors');
 const app = express();
 
 // 2. Importação das Rotas
-// 2. Importação das Rotas
 const authRoutes    = require('./routes/loginRoutes'); // Login e Registo
 const filmesRoutes  = require('./routes/filmesRoutes'); // Atualizado para o novo ficheiro
 const opcoesRoutes  = require('./routes/opcoesRoutes'); // Consolida géneros, tags, pessoas e plataformas
 const listRoutes    = require('./routes/listRoutes'); // Rotas das listas de utilizadores
-//const imagensRoutes = require('./routes/imagens');
+const imagensRoutes  = require('./routes/imagensRoutes');
 const perfilRoutes  = require('./routes/perfilRoutes');
-const ragRoutes  = require('./routes/ragRoutes');
+const ragRoutes     = require('./routes/ragRoutes');
 
 // 3. Middlewares Globais
 app.use(cors({
@@ -25,9 +23,6 @@ app.use(express.json()); // Permite que a API receba dados em formato JSON
 
 // 4. Definição das Rotas (Endpoints)
 
-// Se alguém aceder a http://localhost:3000/uploads/img_123.webp, vai ver a imagem
-//app.use('/imagens', express.static(path.join(__dirname, 'uploads')));
-
 // Rota de Boas-vindas
 app.get('/', (req, res) => {
     res.json({ mensagem: '🎬 Bem-vindo à API de Filmes Pro!', status: 'Online' });
@@ -38,11 +33,11 @@ app.use('/auth', authRoutes);
 
 // Rotas de Conteúdo (Protegidas ou Públicas dependendo do método)
 app.use('/filmes',  filmesRoutes);
-app.use('/opcoes',  opcoesRoutes); // Substitui as 4 rotas antigas
-app.use('/listas',  listRoutes);   // Nova funcionalidade de listas
-//app.use('/imagens', imagensRoutes);
+app.use('/opcoes',  opcoesRoutes); 
+app.use('/listas',  listRoutes);  
+app.use('/img',     imagensRoutes);
 app.use('/perfil',  perfilRoutes);
-app.use('/rag',  ragRoutes);
+app.use('/rag',     ragRoutes);
 
 // 5. Tratamento de Erro 404 (Rota não encontrada)
 app.use((req, res) => {

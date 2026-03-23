@@ -1,5 +1,32 @@
+Arrumar-
+    - Filtragem de Filmes
+    - Imagens
+
+
 Implementação
+    - Cokkies
     - Capcha
     - Email seeder
     - IMDb
 
+Links externos
+    - Intagram
+    - X
+    - Ledderbox
+
+DB
+    - Filmes estado, produtora
+    - Pessoas Descrição
+
+Filme Card
+    - Mostrar generos (até 3)
+
+Filmes 
+    - Filtragem Funcional
+
+Imagens
+    - Imagem de Usuario
+    - Banner grande
+    - Banner Filme
+
+Conquistas

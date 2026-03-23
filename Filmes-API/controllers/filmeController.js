@@ -233,42 +233,53 @@ const filmeController = {
                 ]
             );
 
+            // 2. Limpa as relações antigas para reescrevê-las
             await conexao.execute('DELETE FROM TBLFIL_PES WHERE IDFIL = ?', [idFilme]);
             await conexao.execute('DELETE FROM TBLFIL_GEN WHERE IDFIL = ?', [idFilme]);
             await conexao.execute('DELETE FROM TBLFIL_TAG WHERE IDFIL = ?', [idFilme]);
             await conexao.execute('DELETE FROM TBLFIL_PLA WHERE IDFIL = ?', [idFilme]);
 
-            // Nova função para processar itens mistos (IDs existentes e textos novos)
-            const processarRelacaoDinamica = async (conexao, idFilme, tabelaMestre, colunaMestre, tabelaRelacao, colunaRelacaoId, arrayItems, papel = null) => {
+            // 3. Função Refatorada: Agora aceita um Array de Strings (ex: ["Ação", "Aventura"])
+            const processarRelacaoDinamica = async (conexao, idFilme, tabelaMestre, colunaMestre, tabelaRelacao, colunaRelacaoId, arrayItems, cargo = null) => {
+                // Se não vier dados ou não for array, sai da função em segurança
                 if (!Array.isArray(arrayItems) || arrayItems.length === 0) return;
 
                 const idsParaInserir = [];
 
-                for (const item of arrayItems) {
-                    if (item.novo) {
-                        // 1. Se é novo, insere na tabela mestre primeiro (ex: TBLPESSOA, TBLGENERO)
-                        const [result] = await conexao.execute(
-                            `INSERT INTO ${tabelaMestre} (${colunaMestre}) VALUES (?)`,
-                            [item.nome]
-                        );
-                        // Guarda o ID que o MySQL acabou de gerar
-                        idsParaInserir.push(result.insertId);
-                    } else if (item.id) {
-                        // 2. Se já existe, apenas guarda o ID
-                        idsParaInserir.push(item.id);
+                for (const itemNome of arrayItems) {
+                    if (!itemNome || typeof itemNome !== 'string') continue;
+                    
+                    const nomeLimpo = itemNome.trim();
+                    if (!nomeLimpo) continue;
+
+                    // A. Verifica se o item já existe no banco
+                    const [rows] = await conexao.execute(`SELECT ${colunaRelacaoId} FROM ${tabelaMestre} WHERE ${colunaMestre} = ? LIMIT 1`, [nomeLimpo]);
+                    
+                    let itemId;
+
+                    if (rows.length > 0) {
+                        // O item já existe, pega o ID dele
+                        itemId = rows[0][colunaRelacaoId];
+                    } else {
+                        // B. O item é novo, insere na tabela mestre
+                        const [result] = await conexao.execute(`INSERT INTO ${tabelaMestre} (${colunaMestre}) VALUES (?)`, [nomeLimpo]);
+                        itemId = result.insertId;
                     }
+
+                    idsParaInserir.push(itemId);
                 }
 
                 if (idsParaInserir.length === 0) return;
 
-                // 3. Insere na tabela de relação (ex: TBLFIL_PES)
+                // C. Vincula os IDs na tabela de relação (ex: Filme X Gênero)
+                // Ajustado para usar 'CARGO' em vez de 'papel', conforme o seu banco e front-end
                 let query = `INSERT IGNORE INTO ${tabelaRelacao} (IDFIL, ${colunaRelacaoId}`;
-                query += papel ? ', papel) VALUES ' : ') VALUES ';
+                query += cargo ? ', FUNC) VALUES ' : ') VALUES ';
 
                 const values = [];
                 const placeholders = idsParaInserir.map(id => {
-                    if (papel) {
-                        values.push(idFilme, id, papel);
+                    if (cargo) {
+                        values.push(idFilme, id, cargo);
                         return '(?, ?, ?)';
                     }
                     values.push(idFilme, id);
@@ -278,10 +289,10 @@ const filmeController = {
                 await conexao.execute(query + placeholders, values);
             };
 
-            // Chamadas dinâmicas. Nota: Ajuste os nomes das tabelas (ex: TBLGENERO) e colunas (ex: 'genero' ou 'nome') se forem diferentes no seu MySQL.
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', elenco, 'Elenco');
+            // 4. Executa o processamento dinâmico
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', elenco, 'Ator');
             await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', diretor, 'Diretor');
-            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', roterista, 'Roterista');
+            await processarRelacaoDinamica(conexao, idFilme, 'TBLPES', 'NOMPES', 'TBLFIL_PES', 'IDPES', roterista, 'Roteirista');
             await processarRelacaoDinamica(conexao, idFilme, 'TBLGEN', 'NOMGEN', 'TBLFIL_GEN', 'IDGEN', generos);
             await processarRelacaoDinamica(conexao, idFilme, 'TBLTAG', 'NOMTAG', 'TBLFIL_TAG', 'IDTAG', tags);
             await processarRelacaoDinamica(conexao, idFilme, 'TBLPLA', 'NOMPLA', 'TBLFIL_PLA', 'IDPLA', plataformas);
