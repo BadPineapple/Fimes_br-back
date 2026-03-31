@@ -1,62 +1,70 @@
 const sharp = require('sharp');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises; // Usando versão baseada em Promises para não travar a Event Loop
 const db = require('../db/db');
+
+// Configurações e constantes
+const ALLOWED_SUBFOLDERS = ['poster', 'perfil', 'backdrop', 'geral'];
 
 const imagemController = {
     uploadImagem: async (req, res) => {
+        let caminhoCompleto = null;
+
         try {
-            // Verifica se o middleware Multer conseguiu capturar o ficheiro
             if (!req.file) {
                 return res.status(400).json({ erro: "Nenhuma imagem foi enviada." });
             }
 
-            // 1. Captura os metadados enviados pelo frontend (via FormData)
-            // Transforma 'true'/'false' ou '1'/'0' no formato correto (1 ou 0) para o MySQL
-            let isPublic = 1; 
-            if (req.body.public !== undefined) {
-                isPublic = (req.body.public === 'false' || req.body.public === '0') ? 0 : 1;
+            // 1. Validação e Higienização do 'tipo'
+            // Impede ataques de Directory Traversal e organiza pastas inesperadas
+            let tipo = req.body.tipo || 'geral';
+            if (!ALLOWED_SUBFOLDERS.includes(tipo)) {
+                tipo = 'geral';
             }
-            
-            const hint = req.body.hint || null;
-            const tipo = req.body.tipo || 'geral'; // Ex: 'poster', 'perfil', 'backdrop'
 
-            // 2. Prepara a pasta de destino dinamicamente baseada no 'tipo'
+            // 2. Tratamento de Metadados
+            const isPublic = (req.body.public === 'false' || req.body.public === '0') ? 0 : 1;
+            const hint = req.body.hint ? req.body.hint.substring(0, 255) : null;
+
+            // 3. Preparação do Diretório (Assíncrona)
             const uploadDir = path.join(__dirname, `../public/uploads/imagens/${tipo}`);
-            if (!fs.existsSync(uploadDir)) {
-                // O { recursive: true } cria as subpastas automaticamente se não existirem
-                fs.mkdirSync(uploadDir, { recursive: true });
-            }
+            await fs.mkdir(uploadDir, { recursive: true });
 
-            // 3. Gera um nome único e define o caminho final
+            // 4. Geração de Nome e Caminho
             const nomeArquivo = `${tipo}-${Date.now()}-${Math.round(Math.random() * 1E9)}.webp`;
-            const caminhoCompleto = path.join(uploadDir, nomeArquivo);
+            caminhoCompleto = path.join(uploadDir, nomeArquivo);
 
-            // 4. Mágica do Sharp: Comprime e converte para WebP
+            // 5. Processamento com Sharp
+            // .rotate() é essencial para corrigir orientação de fotos de celular (Exif)
             await sharp(req.file.buffer)
-                .webp({ quality: 80 }) // 80% de qualidade é excelente para web e muito leve
+                .rotate() 
+                .webp({ quality: 80, effort: 6 }) // effort 6 aumenta a compressão sem perder qualidade
                 .toFile(caminhoCompleto);
 
-            // 5. Salva no Repositório de Imagens (TBLIMAGEM)
+            // 6. Persistência no Banco de Dados
             const caminhoBanco = `/uploads/imagens/${tipo}/${nomeArquivo}`;
             
-            const [result] = await db.execute(
-                'INSERT INTO TBLIMAGEM (LOCAL, HINT, PUBLIC, TIPO) VALUES (?, ?, ?, ?)',
-                [caminhoBanco, hint, isPublic, tipo]
-            );
+            try {
+                const [result] = await db.execute(
+                    'INSERT INTO TBLIMAGEM (LOCAL, HINT, PUBLIC, TIPO) VALUES (?, ?, ?, ?)',
+                    [caminhoBanco, hint, isPublic, tipo]
+                );
 
-            // 6. Retorna o ID gerado para ser usado como Chave Estrangeira noutras tabelas
-            res.status(201).json({
-                mensagem: "Imagem enviada e guardada com sucesso!",
-                idImagem: result.insertId, // Este é o ID que vai para TBLFIL ou TBLUSER
-                local: caminhoBanco,
-                hint: hint,
-                tipo: tipo
-            });
+                return res.status(201).json({
+                    mensagem: "Imagem processada com sucesso!",
+                    idImagem: result.insertId,
+                    local: caminhoBanco
+                });
+
+            } catch (dbError) {
+                // SE O BANCO FALHAR: Deletamos a imagem criada para não poluir o HD
+                await fs.unlink(caminhoCompleto);
+                throw dbError; // Repassa para o catch principal
+            }
 
         } catch (error) {
-            console.error("Erro ao processar e salvar imagem:", error);
-            res.status(500).json({ erro: "Erro interno ao processar a imagem." });
+            console.error("Erro crítico no Upload:", error);
+            res.status(500).json({ erro: "Erro ao processar imagem no servidor." });
         }
     },
 
@@ -64,25 +72,19 @@ const imagemController = {
         try {
             const { id } = req.params;
 
-            // Busca os dados da imagem na tabela central
             const [rows] = await db.execute(
                 'SELECT IDIMG, LOCAL, HINT, PUBLIC, TIPO FROM TBLIMAGEM WHERE IDIMG = ?', 
                 [id]
             );
 
-            // Se o ID não existir no banco
             if (rows.length === 0) {
-                return res.status(404).json({ erro: "Imagem não encontrada no repositório." });
+                return res.status(404).json({ erro: "Imagem não encontrada." });
             }
 
-            const imagem = rows[0];
-
-            // Retorna os dados para o frontend (que usará o 'LOCAL' na tag <img>)
-            res.json(imagem);
-
+            res.json(rows[0]);
         } catch (error) {
-            console.error("Erro ao buscar imagem por ID:", error);
-            res.status(500).json({ erro: "Erro interno ao buscar os dados da imagem." });
+            console.error("Erro na busca de imagem:", error);
+            res.status(500).json({ erro: "Erro interno na consulta." });
         }
     }
 };

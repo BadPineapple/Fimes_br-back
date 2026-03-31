@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const app = express();
 
 // 2. Importação das Rotas
@@ -22,6 +23,8 @@ app.use(cors({
 app.use(express.json()); // Permite que a API receba dados em formato JSON
 
 // 4. Definição das Rotas (Endpoints)
+
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 // Rota de Boas-vindas
 app.get('/', (req, res) => {

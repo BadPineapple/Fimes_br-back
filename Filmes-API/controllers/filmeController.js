@@ -16,36 +16,46 @@ const extrairDadosBaseFilme = (dados) => {
 const filmeController = {
     listarTodos: async (req, res) => {
         try {
-            // 1. Extrair todos os parâmetros enviados pelo front-end
             const { titulo, genero, tag, plataforma, pessoa, ano, ordenarPor } = req.query;
-    
-            let query = 'SELECT DISTINCT f.* FROM TBLFIL f ';
+
+            // 1. Iniciamos a Query com as colunas necessárias
+            // Usamos GROUP_CONCAT para agrupar os nomes dos géneros numa string separada por vírgulas
+            let query = `
+                SELECT 
+                    f.*, 
+                    i.LOCAL AS CAMINHO_IMAGEM, 
+                    i.IDIMG AS ID_IMAGEM,
+                    GROUP_CONCAT(DISTINCT g.NOMGEN) AS LISTA_GENEROS
+                FROM TBLFIL f
+                LEFT JOIN TBLIMAGEM i ON f.IMAGEM = i.IDIMG
+                LEFT JOIN TBLFIL_GEN fg ON f.IDFIL = fg.IDFIL
+                LEFT JOIN TBLGEN g ON fg.IDGEN = g.IDGEN
+            `;
+            
             const queryParams = [];
             const conditions = [];
-    
-            // 2. Filtros de Relacionamento (JOINs)
+
+            // 2. Filtros de Relacionamento (Mantendo a sua lógica de JOINs extras se necessário)
             if (genero) {
-                query += 'INNER JOIN TBLFIL_GEN fg ON f.IDFIL = fg.IDFIL ';
-                conditions.push('fg.IDGEN = ?');
+                // Se já filtramos por género lá em cima, este JOIN pode ser redundante, 
+                // mas mantemos para garantir que o filtro IDGEN funcione
+                conditions.push('f.IDFIL IN (SELECT IDFIL FROM TBLFIL_GEN WHERE IDGEN = ?)');
                 queryParams.push(genero);
             }
             if (tag) {
-                query += 'INNER JOIN TBLFIL_TAG ft ON f.IDFIL = ft.IDFIL ';
-                conditions.push('ft.IDTAG = ?');
+                conditions.push('f.IDFIL IN (SELECT IDFIL FROM TBLFIL_TAG WHERE IDTAG = ?)');
                 queryParams.push(tag);
             }
             if (plataforma) {
-                query += 'INNER JOIN TBLFIL_PLA fp ON f.IDFIL = fp.IDFIL ';
-                conditions.push('fp.IDPLA = ?');
+                conditions.push('f.IDFIL IN (SELECT IDFIL FROM TBLFIL_PLA WHERE IDPLA = ?)');
                 queryParams.push(plataforma);
             }
             if (pessoa) {
-                query += 'INNER JOIN TBLFIL_PES fpes ON f.IDFIL = fpes.IDFIL ';
-                conditions.push('fpes.IDPES = ?');
+                conditions.push('f.IDFIL IN (SELECT IDFIL FROM TBLFIL_PES WHERE IDPES = ?)');
                 queryParams.push(pessoa);
             }
-    
-            // 3. Filtros de Atributos do Filme
+
+            // 3. Filtros de Atributos
             if (titulo) {
                 conditions.push('f.NOMFIL LIKE ?');
                 queryParams.push(`%${titulo}%`);
@@ -54,23 +64,38 @@ const filmeController = {
                 conditions.push('f.ANO = ?');
                 queryParams.push(ano);
             }
-    
+
             if (conditions.length > 0) {
                 query += ' WHERE ' + conditions.join(' AND ');
             }
-    
-            // 4. Lógica de Ordenação Dinâmica
-            let orderClause = ' ORDER BY f.NOMFIL ASC'; // Padrão
+
+            // 4. Agrupamento necessário por causa do GROUP_CONCAT e JOINs
+            query += ' GROUP BY f.IDFIL, i.IDIMG';
+
+            // 5. Ordenação
+            let orderClause = ' ORDER BY f.NOMFIL ASC';
             if (ordenarPor === 'nome_desc') orderClause = ' ORDER BY f.NOMFIL DESC';
             if (ordenarPor === 'nota_desc') orderClause = ' ORDER BY f.NOTEXT DESC';
             if (ordenarPor === 'nota_asc') orderClause = ' ORDER BY f.NOTEXT ASC';
             if (ordenarPor === 'ano_desc') orderClause = ' ORDER BY f.ANO DESC';
             if (ordenarPor === 'ano_asc') orderClause = ' ORDER BY f.ANO ASC';
-    
+
             query += orderClause;
-    
-            const [filmes] = await db.execute(query, queryParams);
-            res.json(filmes);
+
+            const [rows] = await db.execute(query, queryParams);
+
+            // 6. Formatação para o Frontend (O "Pulo do Gato")
+            // Transformamos os dados planos do SQL no formato de objeto/array que o FilmCard espera
+            const filmesFormatados = rows.map(row => ({
+                ...row,
+                // Transforma o caminho da imagem no array IMAGEM
+                IMAGEM: row.CAMINHO_IMAGEM ? [{ IDIMG: row.ID_IMAGEM, LOCAL: row.CAMINHO_IMAGEM }] : [],
+                // Passa a string de géneros (o FilmCard já sabe dar split nela)
+                GENEROS: row.LISTA_GENEROS || ""
+            }));
+
+            res.json(filmesFormatados);
+
         } catch (error) {
             console.error("Erro na filtragem:", error);
             res.status(500).json({ erro: "Erro ao buscar filmes." });
@@ -121,20 +146,27 @@ const filmeController = {
                 INNER JOIN tblfil_pes fp ON p.IDPES = fp.IDPES
                 WHERE fp.IDFIL = ?`, [id]);
 
-            // 4. Buscar Plataformas (ajuste se tiver tabela de ligação tblfil_pla)
-            // Se a sua estrutura atual não tiver ligação, esta parte retorna vazio
+            // 4. Buscar Plataformas
             const [plataformas] = await db.query(`
                 SELECT pl.IDPLA, pl.NOMPLA 
                 FROM tblpla pl
                 INNER JOIN tblfil_pla fp ON pl.IDPLA = fp.IDPLA
                 WHERE fp.IDFIL = ?`, [id]);
 
+            // 5. Buscar Imagem do filme
+            const [imagens] = await db.query(`
+                SELECT i.IDIMG, i.LOCAL 
+                FROM tblimagem i
+                INNER JOIN tblfil f ON i.IDIMG = f.IMAGEM
+                WHERE f.IDFIL = ?`, [id]);
+
             // Montar o objeto final
             const resultado = {
                 ...filme,
                 GENEROS: generos,
                 DIRETORES: pessoas,
-                PLATAFORMAS: plataformas
+                PLATAFORMAS: plataformas,
+                IMAGEM: imagens
             };
 
             res.json(resultado);
@@ -160,7 +192,7 @@ const filmeController = {
             const baseFilme = extrairDadosBaseFilme(req.body);
 
             const [resultFilme] = await conexao.execute(
-                `INSERT INTO TBLFIL (NOMFIL, SINOPSE, IMAGEM, DURACAO, ANO, IMDBID, NOTEXT) 
+                `INSERT INTO TBLFIL (NOMFIL, SINOPSE, IMAGEM, DURACAO, ANO, NOTEXT, NOTEXT) 
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.idImagem, 
@@ -248,7 +280,7 @@ const filmeController = {
 
             await conexao.execute(
                 `UPDATE TBLFIL 
-                 SET NOMFIL = ?, SINOPSE = ?, IMAGEM = ?, DURACAO = ?, ANO = ?, IMDBID = ?, NOTEXT = ? 
+                 SET NOMFIL = ?, SINOPSE = ?, IMAGEM = ?, DURACAO = ?, ANO = ?, NOTEXT = ?, NOTEXT = ? 
                  WHERE IDFIL = ?`,
                 [
                     baseFilme.titulo, baseFilme.sinopse, baseFilme.idImagem, 

@@ -5,7 +5,7 @@ const upload = require('../middleware/imagemMiddleware');
 const imagemController = require('../controllers/imagemController');
 const { verificarAcesso } = require('../auth');
 
-router.post('/upload', verificarAcesso(), upload.single('imagem'), imagemController.uploadImagem);
+router.post('/upload', upload, imagemController.uploadImagem);
 
 router.get('/:id', imagemController.buscarPorId);
 

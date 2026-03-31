@@ -3,22 +3,22 @@ const db = require('../db/db');
 const perfilController = {
     obterPerfilCompleto: async (req, res) => {
         try {
-            // Assumindo que este ID que vem na rota é o IDLOGIN (ID de autenticação)
             const loginId = parseInt(req.params.id);
 
-            // 1. Buscar os dados básicos do utilizador usando os nomes exatos da sua tabela
+            // 1. Buscar os dados básicos (COM JOIN PARA A FOTO DE PERFIL)
             const [usuario] = await db.execute(`
                 SELECT 
                     p.IDUSER as id_perfil, 
                     p.NOMUSER as nome, 
-                    p.DESC as descricao, 
-                    p.FOTPER as foto_perfil, 
+                    p.DESC as descricao,
+                    i.LOCAL as foto_perfil, -- Traz a URL da imagem do repositório
                     p.DTANASC as data_nascimento, 
                     l.EMAIL as email, 
                     l.STATS as status
                 FROM tbluser p
-                INNER JOIN tbllogin l ON p.IDLOGIN = l.IDUSER
-                WHERE l.IDUSER = ?
+                INNER JOIN tbllogin l ON p.IDLOGIN = l.IDLOGIN
+                LEFT JOIN tblimagem i ON p.FOTPER = i.IDIMG -- LIGAÇÃO COM A TABELA DE IMAGENS
+                WHERE l.IDLOGIN = ?
             `, [loginId]);
 
             if (usuario.length === 0) {
@@ -26,31 +26,32 @@ const perfilController = {
             }
 
             const dadosPerfil = usuario[0];
-            const idUsuarioReal = dadosPerfil.id_perfil; // O IDUSER da tbluser
+            const idUsuarioReal = dadosPerfil.id_perfil;
 
-            // 2. Buscar as listas criadas por este utilizador (na tabela tbllist)
+            // 2. Buscar as listas criadas por este utilizador
             const [listas] = await db.execute(`
                 SELECT 
-                    IDLIST as id, 
-                    NOMLIST as nome, 
-                    \`DESC\` as descricao, 
-                    PADRAO as padrao, 
-                    DTACRI as data_criacao
-                FROM tbllist 
+                    l.IDLIST as id, 
+                    l.NOMLIST as nome, 
+                    l.DESC as descricao,
+                    l.PADRAO as padrao, 
+                    l.DTACRI as data_criacao
+                FROM tbllist l
                 WHERE IDUSER = ?
             `, [idUsuarioReal]);
 
-            // 3. Para cada lista, buscar os filmes guardados nela (na tabela tbllist_fil)
+            // 3. Buscar os filmes de cada lista (COM JOIN PARA A CAPA DO FILME)
             for (let lista of listas) {
                 const [filmes] = await db.execute(`
                     SELECT 
                         f.IDFIL as id, 
                         f.NOMFIL as titulo, 
-                        f.IMAGEM as imagens, 
+                        img.LOCAL as imagem, 
                         f.ANO as ano,
                         fl.DTAADC as data_adicao
                     FROM tbllist_fil fl
                     INNER JOIN tblfil f ON fl.IDFIL = f.IDFIL
+                    LEFT JOIN tblimagem img ON f.IMAGEM = img.IDIMG
                     WHERE fl.IDLIST = ?
                     ORDER BY fl.DTAADC DESC
                 `, [lista.id]);
@@ -74,33 +75,37 @@ const perfilController = {
             res.status(500).json({ erro: "Erro interno ao carregar o perfil." });
         }
     },
+
     atualizarPerfil: async (req, res) => {
         try {
-            // O ID que vem do token/rota é o IDLOGIN
             const loginId = parseInt(req.params.id);
-            const { nome, descricao } = req.body;
+            const { nome, descricao, foto_perfil } = req.body; // Agora recebe a foto
 
             if (!nome || nome.trim() === '') {
                 return res.status(400).json({ erro: "O nome não pode estar vazio." });
             }
 
-            // Atualiza a tabela tbluser onde o IDLOGIN for igual ao id da requisição
-            // Atenção: A coluna DESC precisa estar entre crases para não dar erro de sintaxe
-            const [result] = await db.execute(`
-                UPDATE tbluser 
-                SET NOMUSER = ?, \`DESC\` = ? 
-                WHERE IDLOGIN = ?
-            `, [nome, descricao, loginId]);
-
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ erro: "Perfil não encontrado ou nenhuma alteração realizada." });
+            // Se o frontend enviar uma foto nova, atualiza a FOTPER também.
+            // Caso contrário, atualiza só o nome e a descrição.
+            if (foto_perfil) {
+                const [result] = await db.execute(`
+                    UPDATE tbluser 
+                    SET NOMUSER = ?, DESC = ?, FOTPER = ? 
+                    WHERE IDLOGIN = ?
+                `, [nome, descricao, foto_perfil, loginId]);
+            } else {
+                const [result] = await db.execute(`
+                    UPDATE tbluser 
+                    SET NOMUSER = ?, DESC = ? 
+                    WHERE IDLOGIN = ?
+                `, [nome, descricao, loginId]);
             }
 
             res.json({ mensagem: "Perfil atualizado com sucesso!" });
 
         } catch (error) {
             console.error("Erro ao atualizar perfil:", error);
-            res.status(500).json({ erro: "Erro interno ao atualizar o perfil." });
+            res.status(500).json({ erro: "Erro ao atualizar perfil." });
         }
     }
 };
