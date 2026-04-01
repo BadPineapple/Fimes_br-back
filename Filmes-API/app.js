@@ -13,7 +13,7 @@ const listRoutes    = require('./routes/listRoutes'); // Rotas das listas de uti
 const imagensRoutes = require('./routes/imagensRoutes');
 const perfilRoutes  = require('./routes/perfilRoutes');
 const ragRoutes     = require('./routes/ragRoutes');
-const pessoasRoutes = require('./routes/pessoasRoutes');
+const pessoasRoutes = require('./routes/pessoaRoutes');
 
 // 3. Middlewares Globais
 app.use(cors({

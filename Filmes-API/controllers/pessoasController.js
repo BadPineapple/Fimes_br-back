@@ -9,7 +9,7 @@ const pessoasController = {
                     p.IDPES, p.NOMPES, p.CARGO, p.DTANASC, p.DTAFAL, p.NATU, p.BIO,
                     f.NOMFIL, f.ANO, fp.PPL
                 FROM TBLPES p
-                LEFT JOIN TBLFILPES fp ON p.IDPES = fp.IDPES
+                LEFT JOIN TBLFIL_PES fp ON p.IDPES = fp.IDPES
                 LEFT JOIN TBLFIL f ON fp.IDFIL = f.IDFIL
                 ORDER BY p.NOMPES ASC, f.ANO DESC
             `;
@@ -63,7 +63,7 @@ const pessoasController = {
                     p.IDPES, p.NOMPES, p.CARGO, p.DTANASC, p.DTAFAL, p.NATU, p.BIO,
                     f.NOMFIL, f.ANO, fp.PPL
                 FROM TBLPES p
-                LEFT JOIN TBLFILPES fp ON p.IDPES = fp.IDPES
+                LEFT JOIN TBLFIL_PES fp ON p.IDPES = fp.IDPES
                 LEFT JOIN TBLFIL f ON fp.IDFIL = f.IDFIL
                 WHERE p.IDPES = ?
                 ORDER BY f.ANO DESC
@@ -130,12 +130,13 @@ const pessoasController = {
             res.status(500).json({ erro: "Erro ao adicionar pessoa.", detalhe: error.message });
         }
     },
+
     atualizar: async (req, res) => {
         let conn;
         try {
             const id = parseInt(req.params.id);
-            // Agora esperamos receber também o array 'filmografia' do frontend
-            const { nompes, cargo, DTANASC, DTAFAL, NATU, BIO, filmografia } = req.body;
+            
+            const { nompes, cargo, nascimento, falecimento, naturalidade, biografia, filmografia } = req.body;
             
             if (!nompes) return res.status(400).json({ erro: "O nome da pessoa (nompes) é obrigatório." });
 
@@ -143,14 +144,22 @@ const pessoasController = {
             conn = await db.getConnection();
             await conn.beginTransaction();
 
-            // 1. Atualizar dados principais na TBLPES
+            // 2. Atualizar dados principais na TBLPES (usando os nomes reais das colunas no SQL)
             const queryPessoa = `
                 UPDATE TBLPES 
                 SET NOMPES = ?, CARGO = ?, DTANASC = ?, DTAFAL = ?, NATU = ?, BIO = ? 
                 WHERE IDPES = ?
             `;
+            
+            // Aqui fazemos a ponte: a variável 'nascimento' do React vai para a coluna 'DTANASC', etc.
             const valoresPessoa = [
-                nompes, cargo || null, DTANASC || null, DTAFAL || null, NATU || null, BIO || null, id
+                nompes, 
+                cargo || null, 
+                nascimento || null, 
+                falecimento || null, 
+                naturalidade || null, 
+                biografia || null, 
+                id
             ];
 
             const [resultPessoa] = await conn.execute(queryPessoa, valoresPessoa);
@@ -161,20 +170,21 @@ const pessoasController = {
                 return res.status(404).json({ erro: "Pessoa não encontrada." });
             }
 
-            // 2. Atualizar a filmografia (TBLFILPES)
+            // 3. Atualizar a filmografia (TBLFIL_PES)
             // Só faz isso se 'filmografia' for enviada como um array na requisição
             if (Array.isArray(filmografia)) {
                 
                 // Passo A: Remove todos os filmes atuais desse artista
-                await conn.execute('DELETE FROM TBLFILPES WHERE IDPES = ?', [id]);
+                await conn.execute('DELETE FROM TBLFIL_PES WHERE IDPES = ?', [id]);
 
                 // Passo B: Insere a nova lista de filmes
                 if (filmografia.length > 0) {
-                    const queryFilme = 'INSERT INTO TBLFILPES (IDFIL, IDPES, PPL) VALUES (?, ?, ?)';
+                    // Coluna PPL em vez de papel
+                    const queryFilme = 'INSERT INTO TBLFIL_PES (IDFIL, IDPES, PPL) VALUES (?, ?, ?)';
                     
                     for (const filme of filmografia) {
-                        // É essencial que o frontend envie o IDFIL (ID do filme) para conseguirmos fazer a ligação
-                        await conn.execute(queryFilme, [filme.idfil, id, filme.PPL || null]);
+                        // O React envia 'filme.papel', e nós inserimos na coluna 'PPL'
+                        await conn.execute(queryFilme, [filme.idfil, id, filme.papel || null]);
                     }
                 }
             }
