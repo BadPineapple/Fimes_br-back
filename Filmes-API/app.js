@@ -10,9 +10,10 @@ const authRoutes    = require('./routes/loginRoutes'); // Login e Registo
 const filmesRoutes  = require('./routes/filmesRoutes'); // Atualizado para o novo ficheiro
 const opcoesRoutes  = require('./routes/opcoesRoutes'); // Consolida géneros, tags, pessoas e plataformas
 const listRoutes    = require('./routes/listRoutes'); // Rotas das listas de utilizadores
-const imagensRoutes  = require('./routes/imagensRoutes');
+const imagensRoutes = require('./routes/imagensRoutes');
 const perfilRoutes  = require('./routes/perfilRoutes');
 const ragRoutes     = require('./routes/ragRoutes');
+const pessoasRoutes = require('./routes/pessoasRoutes');
 
 // 3. Middlewares Globais
 app.use(cors({
@@ -41,6 +42,7 @@ app.use('/listas',  listRoutes);
 app.use('/img',     imagensRoutes);
 app.use('/perfil',  perfilRoutes);
 app.use('/rag',     ragRoutes);
+app.use('/artista', pessoasRoutes);
 
 // 5. Tratamento de Erro 404 (Rota não encontrada)
 app.use((req, res) => {
