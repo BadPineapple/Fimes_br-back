@@ -30,6 +30,7 @@ exports.syncVectors = async (req, res) => {
     try {
         const pipe = await getExtractor();
         
+        // Busca todos os filmes com seus relacionamentos
         const [rows] = await db.query(`
             SELECT f.IDFIL, f.NOMFIL, f.SINOPSE, 
                    GROUP_CONCAT(DISTINCT g.NOMGEN SEPARATOR ', ') as GENEROS,
@@ -42,27 +43,44 @@ exports.syncVectors = async (req, res) => {
             GROUP BY f.IDFIL
         `);
 
-        for (const row of rows) {
-            const content = `${row.NOMFIL}. ${row.SINOPSE}. Gêneros: ${row.GENEROS}. Diretores: ${row.DIRETORES}.`;
-            
-            // 1. Atualiza o texto de busca na tabela principal
-            await db.query("UPDATE tblfil SET SEACONT = ? WHERE IDFIL = ?", [content, row.IDFIL]);
-
-            // 2. Gera o vetor matemático
-            const output = await pipe(content, { pooling: 'mean', normalize: true });
-            const vectorArray = Array.from(output.data);
-
-            // 3. Guarda ou Atualiza na tabela de vetores
-            await db.query(`
-                INSERT INTO tblfil_vectors (IDFIL, VECTOR_DATA) 
-                VALUES (?, ?) 
-                ON DUPLICATE KEY UPDATE VECTOR_DATA = VALUES(VECTOR_DATA)`, 
-                [row.IDFIL, JSON.stringify(vectorArray)]
-            );
+        if (rows.length === 0) {
+            return res.json({ message: "Nenhum filme encontrado para sincronizar." });
         }
 
-        res.json({ message: "Sincronização completa: Textos e Vetores gerados." });
+        console.log(`Iniciando vetorização de ${rows.length} filmes...`);
+
+        // REATORAÇÃO: Processamento em Lotes (Batches) para não estourar a memória
+        const BATCH_SIZE = 50; 
+        
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+            const lote = rows.slice(i, i + BATCH_SIZE);
+            
+            // Processa o lote atual em paralelo para ganhar velocidade
+            await Promise.all(lote.map(async (row) => {
+                const content = `${row.NOMFIL}. ${row.SINOPSE}. Gêneros: ${row.GENEROS || 'N/A'}. Diretores: ${row.DIRETORES || 'N/A'}.`;
+                
+            // 1. Atualiza o texto de busca na tabela principal
+                await db.query("UPDATE tblfil SET SEACONT = ? WHERE IDFIL = ?", [content, row.IDFIL]);
+
+            // 2. Gera o vetor matemático
+                const output = await pipe(content, { pooling: 'mean', normalize: true });
+                const vectorArray = Array.from(output.data);
+
+            // 3. Guarda ou Atualiza na tabela de vetores
+                await db.query(`
+                    INSERT INTO tblfil_vectors (IDFIL, VECTOR_DATA) 
+                    VALUES (?, ?) 
+                    ON DUPLICATE KEY UPDATE VECTOR_DATA = VALUES(VECTOR_DATA)`, 
+                    [row.IDFIL, JSON.stringify(vectorArray)]
+                );
+            }));
+            
+            console.log(`Lote processado: ${Math.min(i + BATCH_SIZE, rows.length)}/${rows.length}`);
+        }
+
+        res.json({ message: `Sincronização completa: ${rows.length} filmes vetorizados.` });
     } catch (error) {
+        console.error("Erro na sincronização RAG:", error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -79,30 +97,43 @@ exports.recommendMovie = async (req, res) => {
         const output = await pipe(description, { pooling: 'mean', normalize: true });
         const userVector = Array.from(output.data);
 
-        // 2. Busca os vetores e dados dos filmes
+        // 2. REFATORAÇÃO: JOIN aprimorado para trazer todos os dados que o Front-End (FilmCard) exige
         const [storedVectors] = await db.query(`
-            SELECT v.VECTOR_DATA, f.* FROM tblfil_vectors v
+            SELECT 
+                v.VECTOR_DATA, 
+                f.IDFIL, f.NOMFIL, f.SINOPSE, f.ANO, f.NOTEXT, f.IMAGEM,
+                GROUP_CONCAT(DISTINCT g.NOMGEN SEPARATOR ', ') as GENEROS
+            FROM tblfil_vectors v
             JOIN tblfil f ON v.IDFIL = f.IDFIL
+            LEFT JOIN tblfil_gen fg ON f.IDFIL = fg.IDFIL
+            LEFT JOIN tblgen g ON fg.IDGEN = g.IDGEN
+            GROUP BY f.IDFIL
         `);
 
         // 3. Cálculo de similaridade
         const results = storedVectors.map(sv => {
             const movieVector = JSON.parse(sv.VECTOR_DATA);
             return {
-                id: sv.IDFIL,
-                titulo: sv.NOMFIL,
-                sinopse: sv.SINOPSE,
+                // Mantemos o padrão maiúsculo que o seu FilmCard.tsx espera
+                IDFIL: sv.IDFIL,
+                NOMFIL: sv.NOMFIL,
+                SINOPSE: sv.SINOPSE,
                 ANO: sv.ANO,
                 NOTEXT: sv.NOTEXT,
                 IMAGEM: sv.IMAGEM,
+                // O front-end espera um Array de gêneros
+                GENEROS: sv.GENEROS ? sv.GENEROS.split(', ') : [], 
                 score: cosineSimilarity(userVector, movieVector)
             };
         });
 
+        // 4. Ordena do mais parecido para o menos parecido
         results.sort((a, b) => b.score - a.score);
 
-        res.json(results.slice(0, 3));
+        // Retorna apenas a melhor recomendação (top 1) ou mude o slice para (0, 3) se quiser mais
+        res.json(results.slice(0, 1));
     } catch (error) {
+        console.error("Erro na recomendação RAG:", error);
         res.status(500).json({ error: error.message });
     }
 };
